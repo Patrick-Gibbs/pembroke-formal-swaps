@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ 'Edit formal' if f else 'New formal' }}</h1>
+<form method="post">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <label>Host college</label>
+  <input type="text" name="host_college" required value="{{ f['host_college'] if f else '' }}">
+  <label>Date &amp; time (UK time)</label>
+  <input type="datetime-local" name="dt" required value="{{ (f['dt'].replace(' ', 'T')) if f else '' }}">
+  <label>Price info</label>
+  <input type="text" name="price" placeholder="e.g. £16.50, pay host college" value="{{ f['price'] if f else '' }}">
+  <label>Number of slots</label>
+  <input type="number" name="slots" min="1" required value="{{ f['slots'] if f else 10 }}">
+  <label>Term</label>
+  <input type="text" name="term" required value="{{ f['term'] if f else default_term }}">
+  <label>Ballot opens (UK time)</label>
+  <input type="datetime-local" name="ballot_open" required value="{{ (f['ballot_open'].replace(' ', 'T')) if f else '' }}">
+  <label>Ballot closes (UK time)</label>
+  <input type="datetime-local" name="ballot_close" required value="{{ (f['ballot_close'].replace(' ', 'T')) if f else '' }}">
+  <label>Status</label>
+  <select name="status">
+    {% for s in ['open','allocated','cancelled'] %}
+    <option value="{{ s }}" {% if f and f['status'] == s %}selected{% endif %}>{{ s }}</option>
+    {% endfor %}
+  </select>
+  <p class="muted">“open” = accepting rankings; “allocated” = ballot has run (claims possible); “cancelled” = hidden.</p>
+  <p><button>Save</button> <a class="btn ghost" href="/admin/">Back</a></p>
+</form>
+{% endblock %}

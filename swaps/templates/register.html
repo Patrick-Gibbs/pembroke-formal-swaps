@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Register — Pembroke Formal Swaps{% endblock %}
+{% block content %}
+<h1>Register</h1>
+<form method="post">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <label>First name</label>
+  <input type="text" name="first_name" required value="{{ form.get('first_name','') }}">
+  <label>Last name</label>
+  <input type="text" name="last_name" required value="{{ form.get('last_name','') }}">
+  <label>Cambridge email</label>
+  <input type="email" name="email" required placeholder="crsid@pem.cam.ac.uk" value="{{ form.get('email','') }}">
+  <p class="muted">Must be a <b>cam.ac.uk</b> address (any department/college subdomain).
+  We'll send a verification link.</p>
+  <label>Dietary requirements</label>
+  {% for c in dietary_choices %}
+    <label style="display:inline-block;font-weight:normal;margin:.15rem .8rem .15rem 0">
+      <input type="checkbox" name="diet_{{ c }}" {% if form.get('diet_' + c) %}checked{% endif %}> {{ c }}
+    </label>
+  {% endfor %}
+  <input type="text" name="dietary_other" placeholder="Anything else (allergies etc.)" value="{{ form.get('dietary_other','') }}">
+  <label>4-digit PIN</label>
+  <input type="password" name="pin" inputmode="numeric" pattern="\d{4}" maxlength="4" required>
+  <div class="note">⚠️ A 4-digit PIN is <b>low-security</b> — it protects your formal
+  bookings, not your bank account. <b>Don't reuse a PIN that means something to you</b>
+  (bank card, phone unlock). It is stored hashed, never in plaintext, but treat this
+  account as low-security.</div>
+  <p><button>Register</button></p>
+</form>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Run allocation</h1>
+<div class="card">
+<p><b>{{ n_prefs }}</b> member(s) have submitted rankings for <b>{{ term }}</b>.</p>
+<p class="note">Policy: rounds — everyone gets at most one place before anyone gets a
+second. Within a round, everyone bids on their highest-ranked formal that still has
+seats; oversubscribed formals draw winners at random (seeded). Losers cascade to
+their next choice in the same round. Someone gets nothing only if every formal they
+ranked filled up. The seed is recorded; re-running with the same seed and unchanged
+data reproduces identical results.</p>
+<form method="post">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <label>Term</label>
+  <input type="text" name="term" value="{{ term }}">
+  <label>Seed (leave blank for a fresh random seed — it will be recorded)</label>
+  <input type="text" name="seed" placeholder="blank = random">
+  <p><button onclick="return confirm('Run the allocation now? Existing active places are kept; remaining seats are filled by ballot.')">Run allocation</button></p>
+</form>
+</div>
+{% endblock %}

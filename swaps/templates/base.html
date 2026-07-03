@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Pembroke Formal Swaps{% endblock %}</title>
+<style>
+:root { --blue:#003b6f; --lt:#eef3f8; --ok:#1a7f37; --err:#b42318; }
+* { box-sizing:border-box; }
+body { font-family:Georgia,'Times New Roman',serif; margin:0; color:#1c2430; background:#fafbfc; }
+header { background:var(--blue); color:#fff; padding:.7rem 1rem; display:flex; flex-wrap:wrap; gap:.6rem 1.2rem; align-items:baseline; }
+header a { color:#fff; text-decoration:none; }
+header .brand { font-size:1.15rem; font-weight:bold; margin-right:auto; }
+main { max-width:56rem; margin:1.2rem auto; padding:0 1rem; }
+h1,h2,h3 { font-family:inherit; color:var(--blue); }
+table { border-collapse:collapse; width:100%; margin:.8rem 0; background:#fff; }
+th,td { border:1px solid #d5dde5; padding:.45rem .6rem; text-align:left; font-size:.95rem; }
+th { background:var(--lt); }
+.flash { padding:.6rem .9rem; border-radius:6px; margin:.6rem 0; }
+.flash.ok { background:#e6f4ea; color:var(--ok); border:1px solid #b7e1c3; }
+.flash.error { background:#fdecea; color:var(--err); border:1px solid #f5c6c0; }
+form.inline { display:inline; }
+label { display:block; margin:.6rem 0 .15rem; font-weight:bold; }
+input[type=text],input[type=email],input[type=password],input[type=number],input[type=datetime-local],select {
+  width:100%; max-width:26rem; padding:.45rem; border:1px solid #b8c4d0; border-radius:5px; font-size:1rem; }
+button,.btn { background:var(--blue); color:#fff; border:0; padding:.45rem .9rem; border-radius:5px; font-size:.95rem; cursor:pointer; text-decoration:none; display:inline-block; }
+button.small { padding:.15rem .5rem; font-size:.8rem; }
+button.danger { background:var(--err); }
+button.ghost { background:#fff; color:var(--blue); border:1px solid var(--blue); }
+.note { background:#fff8e1; border:1px solid #eadb9a; padding:.6rem .9rem; border-radius:6px; font-size:.9rem; }
+.muted { color:#5b6b7c; font-size:.88rem; }
+.card { background:#fff; border:1px solid #d5dde5; border-radius:8px; padding:.9rem 1.1rem; margin:.8rem 0; }
+.ranklist { list-style:none; padding:0; }
+.ranklist li { background:#fff; border:1px solid #b8c4d0; border-radius:6px; padding:.5rem .8rem; margin:.35rem 0; display:flex; gap:.6rem; align-items:center; }
+.ranklist li .num { font-weight:bold; color:var(--blue); min-width:1.4rem; }
+.ranklist li .grow { flex:1; }
+footer { text-align:center; color:#8a97a5; font-size:.8rem; margin:2.5rem 0 1rem; }
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="/">Pembroke Formal Swaps</a>
+  <a href="/attendees">Attendee lists</a>
+  {% if user %}
+    <a href="/rank">My ranking</a>
+    <a href="/me">My formals</a>
+    <form class="inline" method="post" action="/logout">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button class="small ghost" style="color:#fff;border-color:#fff;background:transparent">Log out ({{ user['first_name'] }})</button>
+    </form>
+  {% else %}
+    <a href="/register">Register</a>
+    <a href="/login">Log in</a>
+  {% endif %}
+  {% if is_admin %}<a href="/admin/">Admin</a>{% endif %}
+</header>
+<main>
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, m in msgs %}<div class="flash {{ cat }}">{{ m }}</div>{% endfor %}
+{% endwith %}
+{% block content %}{% endblock %}
+</main>
+<footer>Pembroke College formal swaps &middot; organised by students, for students</footer>
+</body>
+</html>

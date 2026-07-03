@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Formal swaps{% if term %} — {{ term }}{% endif %}</h1>
+{% if not term %}
+  <p>No term is set up yet. Check back soon!</p>
+{% elif not formals %}
+  <p>No formals have been announced for {{ term }} yet.</p>
+{% else %}
+  {% if ballot_open %}
+    <div class="flash ok">The ballot is <b>open</b> —
+      {% if user %}<a href="/rank">rank your formals now</a>.{% else %}<a href="/register">register</a> or <a href="/login">log in</a> to rank your formals.{% endif %}
+    </div>
+  {% endif %}
+  <table>
+    <tr><th>College</th><th>Date &amp; time</th><th>Price</th><th>Places</th><th>Free now</th><th></th></tr>
+    {% for f in formals %}
+    <tr>
+      <td>{{ f['host_college'] }}</td>
+      <td>{{ f['dt'] }}</td>
+      <td>{{ f['price'] }}</td>
+      <td>{{ f['slots'] }}</td>
+      <td>{% if f['status'] == 'allocated' %}{{ free_seats[f['id']] }}{% else %}—{% endif %}</td>
+      <td>
+        {% if user %}
+          {% if f['status'] == 'allocated' and free_seats[f['id']] > 0 %}
+            <a class="btn" href="/formals/{{ f['id'] }}/claim">Claim</a>
+          {% endif %}
+          <form class="inline" method="post" action="/formals/{{ f['id'] }}/subscribe">
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            <button class="small ghost">Notify me</button>
+          </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="muted">“Notify me” emails you if a place opens up after allocation.
+  Allocation is a preference-honouring random ballot: rank the formals you want
+  before the ballot closes.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Users</h1>
+<table>
+  <tr><th>Name</th><th>Email</th><th>Verified</th><th>Dietary</th><th>Active places</th><th>Joined</th></tr>
+  {% for u in rows %}
+  <tr>
+    <td>{{ u['last_name'] }}, {{ u['first_name'] }}</td>
+    <td>{{ u['email'] }}</td>
+    <td>{{ '✓' if u['email_verified'] else '—' }}</td>
+    <td>{{ ", ".join((u['dietary_flags'].split(',') if u['dietary_flags'] else []) + ([u['dietary_other']] if u['dietary_other'] else [])) }}</td>
+    <td>{{ u['places'] }}</td>
+    <td>{{ u['created_at'] }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

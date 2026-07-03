@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Check your email</h1>
+<div class="card">
+<p>We've sent a verification link to <b>{{ email }}</b>. Click it within 24 hours
+to activate your account.</p>
+<p class="muted">Nothing arrived? Check spam, or <a href="/register">register again</a>
+to get a fresh link.</p>
+</div>
+{% endblock %}

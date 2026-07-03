@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Claim a place — {{ formal['host_college'] }}</h1>
+<div class="card">
+  <p><b>{{ formal['host_college'] }}</b> — {{ formal['dt'] }}
+  {% if formal['price'] %}&middot; {{ formal['price'] }}{% endif %}</p>
+  <p>Free places right now: <b>{{ free }}</b></p>
+  {% if free > 0 %}
+  <form method="post">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <button>Claim this place</button>
+  </form>
+  <p class="muted">First come, first served — the claim is atomic, so if someone
+  beats you by a second you'll see a message rather than a double booking.</p>
+  {% else %}
+  <p>No free places at the moment.
+  <form class="inline" method="post" action="/formals/{{ formal['id'] }}/subscribe">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <button class="ghost">Email me if one opens</button>
+  </form></p>
+  {% endif %}
+</div>
+{% endblock %}

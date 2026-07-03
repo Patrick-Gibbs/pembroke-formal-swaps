@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Log in — Pembroke Formal Swaps{% endblock %}
+{% block content %}
+<h1>Log in</h1>
+<form method="post">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <label>Email</label>
+  <input type="email" name="email" required>
+  <label>4-digit PIN</label>
+  <input type="password" name="pin" inputmode="numeric" pattern="\d{4}" maxlength="4" required>
+  <p><button>Log in</button></p>
+</form>
+<p class="muted">No account? <a href="/register">Register</a>. Too many wrong PINs
+locks the account temporarily.</p>
+{% endblock %}

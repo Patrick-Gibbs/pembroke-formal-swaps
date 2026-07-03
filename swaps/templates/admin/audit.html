@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Audit log (latest 500)</h1>
+<table>
+  <tr><th>When (UTC)</th><th>Actor</th><th>Action</th><th>Detail</th></tr>
+  {% for r in rows %}
+  <tr><td>{{ r['at'] }}</td><td>{{ r['actor'] }}</td><td>{{ r['action'] }}</td><td>{{ r['detail'] }}</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}My formals — Pembroke Formal Swaps{% endblock %}
+{% block content %}
+<h1>My formals</h1>
+{% if not allocs %}<p>No places yet. <a href="/rank">Rank formals</a> before the ballot closes, or claim a free place from the <a href="/">home page</a>.</p>{% endif %}
+{% if allocs %}
+<table>
+  <tr><th>College</th><th>Date &amp; time</th><th>Price</th><th>Status</th><th></th></tr>
+  {% for a in allocs %}
+  <tr>
+    <td>{{ a['host_college'] }}</td>
+    <td>{{ a['dt'] }}</td>
+    <td>{{ a['price'] }}</td>
+    <td>{{ a['status'] }}</td>
+    <td>
+      {% if cancellable[a['id']] %}
+      <form class="inline" method="post" action="/cancel/{{ a['id'] }}"
+            onsubmit="return confirm('Cancel your place at {{ a['host_college'] }}? It will be offered to others.')">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <button class="small danger">Cancel</button>
+      </form>
+      {% elif a['status'] == 'active' %}
+      <span class="muted">within 24h — can't cancel</span>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+<p class="muted">Cancelling releases your place to others at a random moment within
+the next hour. No cancellations in the 24 hours before a formal.</p>
+{% endif %}
+<h2>Slot alerts</h2>
+{% if subs %}
+<table>
+  <tr><th>College</th><th>Date</th><th></th></tr>
+  {% for s in subs %}
+  <tr>
+    <td>{{ s['host_college'] }}</td><td>{{ s['dt'] }}</td>
+    <td><form class="inline" method="post" action="/formals/{{ s['formal_id'] }}/unsubscribe">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button class="small ghost">Unsubscribe</button></form></td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}<p class="muted">You're not subscribed to any formal. Use “Notify me” on the home page.</p>{% endif %}
+{% endblock %}

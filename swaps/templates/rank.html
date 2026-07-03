@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Rank formals — Pembroke Formal Swaps{% endblock %}
+{% block content %}
+<h1>Rank your formals — {{ term }}</h1>
+<p class="muted">Put the formals you want in order (1 = most wanted). Leave out any
+you don't want. You can edit until the ballot closes.</p>
+<form method="post" id="rankform">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <input type="hidden" name="order" id="order">
+  <h3>Your ranking</h3>
+  <ol class="ranklist" id="ranked">
+    {% for f in ranked %}
+    <li data-id="{{ f['id'] }}"><span class="num"></span>
+      <span class="grow"><b>{{ f['host_college'] }}</b> — {{ f['dt'] }} {% if f['price'] %}({{ f['price'] }}){% endif %}</span>
+      <button type="button" class="small ghost" onclick="move(this,-1)">▲</button>
+      <button type="button" class="small ghost" onclick="move(this,1)">▼</button>
+      <button type="button" class="small danger" onclick="drop(this)">✕</button>
+    </li>
+    {% endfor %}
+  </ol>
+  <p class="muted" id="emptymsg" {% if ranked %}hidden{% endif %}>Nothing ranked yet — add formals from below.</p>
+  <h3>Not entering</h3>
+  <ul class="ranklist" id="unranked">
+    {% for f in unranked %}
+    <li data-id="{{ f['id'] }}">
+      <span class="grow"><b>{{ f['host_college'] }}</b> — {{ f['dt'] }} {% if f['price'] %}({{ f['price'] }}){% endif %}</span>
+      <button type="button" class="small" onclick="add(this)">+ Add to ranking</button>
+    </li>
+    {% endfor %}
+  </ul>
+  <p><button>Save ranking</button></p>
+</form>
+<script>
+function renumber() {
+  const items = document.querySelectorAll('#ranked li');
+  items.forEach((li, i) => li.querySelector('.num').textContent = (i + 1) + '.');
+  document.getElementById('order').value =
+    Array.from(items).map(li => li.dataset.id).join(',');
+  document.getElementById('emptymsg').hidden = items.length > 0;
+}
+function move(btn, dir) {
+  const li = btn.closest('li'), sib = dir < 0 ? li.previousElementSibling : li.nextElementSibling;
+  if (sib) (dir < 0 ? li.parentNode.insertBefore(li, sib) : li.parentNode.insertBefore(sib, li));
+  renumber();
+}
+function drop(btn) {
+  const li = btn.closest('li');
+  li.querySelectorAll('button').forEach(b => b.remove());
+  const add_btn = document.createElement('button');
+  add_btn.type = 'button'; add_btn.className = 'small'; add_btn.textContent = '+ Add to ranking';
+  add_btn.onclick = function(){ add(add_btn); };
+  li.querySelector('.num') && li.querySelector('.num').remove();
+  li.appendChild(add_btn);
+  document.getElementById('unranked').appendChild(li);
+  renumber();
+}
+function add(btn) {
+  const li = btn.closest('li');
+  li.querySelectorAll('button').forEach(b => b.remove());
+  const num = document.createElement('span'); num.className = 'num';
+  li.insertBefore(num, li.firstChild);
+  ['▲','▼','✕'].forEach((sym, i) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = i === 2 ? 'small danger' : 'small ghost'; b.textContent = sym;
+    b.onclick = i === 2 ? function(){ drop(b); } : function(){ move(b, i === 0 ? -1 : 1); };
+    li.appendChild(b);
+  });
+  document.getElementById('ranked').appendChild(li);
+  renumber();
+}
+renumber();
+</script>
+{% endblock %}

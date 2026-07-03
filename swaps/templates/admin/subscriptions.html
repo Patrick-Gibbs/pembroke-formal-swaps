@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Subscriptions</h1>
+<table>
+  <tr><th>Member</th><th>Email</th><th>Formal</th><th>Date</th></tr>
+  {% for s in rows %}
+  <tr><td>{{ s['first_name'] }} {{ s['last_name'] }}</td><td>{{ s['email'] }}</td>
+      <td>{{ s['host_college'] }}</td><td>{{ s['dt'] }}</td></tr>
+  {% else %}<tr><td colspan="4">None</td></tr>
+  {% endfor %}
+</table>
+<h1>Recent slot releases</h1>
+<table>
+  <tr><th>#</th><th>Formal</th><th>Release at (UTC)</th><th>Opened</th><th>Claimed by user</th><th>Claimed at</th></tr>
+  {% for r in releases %}
+  <tr><td>{{ r['id'] }}</td><td>{{ r['host_college'] }}</td><td>{{ r['release_at'] }}</td>
+      <td>{{ '✓' if r['opened'] else 'pending' }}</td>
+      <td>{{ r['claimed_by'] or '—' }}</td><td>{{ r['claimed_at'] or '—' }}</td></tr>
+  {% else %}<tr><td colspan="6">None</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

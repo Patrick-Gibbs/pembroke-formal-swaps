@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Attendees — Pembroke Formal Swaps{% endblock %}
+{% block content %}
+<h1>Attendee lists{% if term %} — {{ term }}{% endif %}</h1>
+{% if not data %}<p>No allocated formals yet — lists appear here after the ballot runs.</p>{% endif %}
+{% for f, rows, diets in data %}
+<div class="card">
+  <h2>{{ f['host_college'] }} — {{ f['dt'] }}</h2>
+  <p class="muted">{{ rows|length }} attending / {{ f['slots'] }} places</p>
+  {% if rows %}
+  <table>
+    <tr><th>Name</th><th>Dietary</th></tr>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r['first_name'] }} {{ r['last_name'] }}</td>
+      <td>{{ ", ".join((r['dietary_flags'].split(',') if r['dietary_flags'] else []) + ([r['dietary_other']] if r['dietary_other'] else [])) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% if diets %}
+  <p class="muted"><b>Dietary summary for host college:</b>
+    {% for d, n in diets.items() %}{{ d }} ×{{ n }}{% if not loop.last %}, {% endif %}{% endfor %}
+  </p>
+  {% endif %}
+  {% else %}<p>No attendees.</p>{% endif %}
+</div>
+{% endfor %}
+{% endblock %}

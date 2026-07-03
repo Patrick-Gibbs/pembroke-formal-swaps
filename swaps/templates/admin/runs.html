@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Allocation runs</h1>
+{% for r in runs %}
+<div class="card">
+  <p><b>Run #{{ r['id'] }}</b> — {{ r['term'] }} — {{ r['at'] }} UTC —
+  seed <code>{{ r['seed'] }}</code></p>
+  <pre style="white-space:pre-wrap;font-size:.85rem;background:var(--lt);padding:.6rem;border-radius:6px">{{ r['summary'] }}</pre>
+</div>
+{% else %}<p>No runs yet.</p>{% endfor %}
+{% endblock %}

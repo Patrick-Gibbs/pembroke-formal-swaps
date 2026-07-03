@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Roster — {{ f['host_college'] }} ({{ f['dt'] }})</h1>
+<p>
+  <a class="btn" href="?csv=1">Export CSV (active attendees)</a>
+  <a class="btn ghost" href="/admin/">Back</a>
+  &nbsp; Free seats now: <b>{{ free }}</b> / {{ f['slots'] }}
+</p>
+<table>
+  <tr><th>Name</th><th>Email</th><th>Dietary</th><th>Status</th><th>Source</th><th></th></tr>
+  {% for r in rows %}
+  <tr>
+    <td>{{ r['first_name'] }} {{ r['last_name'] }}</td>
+    <td>{{ r['email'] }}</td>
+    <td>{{ ", ".join((r['dietary_flags'].split(',') if r['dietary_flags'] else []) + ([r['dietary_other']] if r['dietary_other'] else [])) }}</td>
+    <td>{{ r['status'] }}</td>
+    <td>{{ r['source'] }}</td>
+    <td>{% if r['status'] == 'active' %}
+      <form class="inline" method="post" action="/admin/allocations/{{ r['alloc_id'] }}/cancel"
+            onsubmit="return confirm('Remove {{ r['first_name'] }} from this formal?')">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <button class="small danger">Remove</button>
+      </form>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+<div class="card">
+  <h3>Manually add someone</h3>
+  <form method="post" action="/admin/formals/{{ f['id'] }}/add-user">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <select name="user_id">
+      {% for u in users %}<option value="{{ u['id'] }}">{{ u['last_name'] }}, {{ u['first_name'] }} ({{ u['email'] }})</option>{% endfor %}
+    </select>
+    <button>Add to this formal</button>
+  </form>
+  <p class="muted">To move someone between formals: add them to the new one, then remove them here.
+  Admin removals bypass the 24-hour rule; the freed seat still releases at a random time within an hour.</p>
+</div>
+{% endblock %}
