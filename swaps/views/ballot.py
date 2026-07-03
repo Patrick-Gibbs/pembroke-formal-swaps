@@ -10,7 +10,7 @@ from ..security import current_user, login_required
 
 bp = Blueprint("ballot", __name__, url_prefix="/ballot")
 
-MAX_GROUP_SIZE = 6
+MAX_GROUP_SIZE = 4
 
 
 def _term(db):

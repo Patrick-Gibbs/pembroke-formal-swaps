@@ -99,7 +99,7 @@ VM needs touching.
    oversubscribed draw, units (groups and solos) are drawn in random order and
    admitted while they fit; a group that doesn't fit is passed over (leftover
    seats stay winnable by smaller units) and cascades to its next choice.
-   Groups are capped at 6.
+   Groups are capped at 4 (`MAX_GROUP_SIZE` in `swaps/views/ballot.py`).
 5. **Reproducibility:** every run records its seed (Admin → Allocation runs,
    with a log of every lottery). Re-running with the same seed on unchanged
    data gives byte-identical results. Re-running after edits only fills seats,
