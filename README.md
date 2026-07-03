@@ -73,21 +73,11 @@ http://127.0.0.1:8000 (COOKIE_SECURE=0 only for plain-HTTP local testing).
 
 ## Domain / DNS status
 
-Caddy is configured for `pembrokeformalswaps.com` + `www` and will provision
-Let's Encrypt certificates **automatically, no action on the VM needed** — but
-as of deployment the domain (delegated to Cloudflare: `brodie`/`wally
-.ns.cloudflare.com`) has **no A record published**. In the Cloudflare DNS
-dashboard add, as **DNS-only (grey cloud, not proxied)** records:
-
-```
-A    pembrokeformalswaps.com      77.68.16.116
-A    www.pembrokeformalswaps.com  77.68.16.116
-```
-
-Caddy retries every minute; within ~2 minutes of the records appearing,
-https://pembrokeformalswaps.com goes live. Until then the site is served at
-**https://77.68.16.116** with a self-signed cert (browser warning is expected);
-that fallback block in the Caddyfile can be deleted afterwards.
+Live at **https://pembrokeformalswaps.com** (`www` redirects to the apex).
+DNS-only A records for apex + `www` point at 77.68.16.116 (Cloudflare,
+unproxied); Caddy provisioned Let's Encrypt certificates and renews them
+automatically. If the IP ever changes, update both A records — nothing on the
+VM needs touching.
 
 ## Allocation policy (as implemented)
 
