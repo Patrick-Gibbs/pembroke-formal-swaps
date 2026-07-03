@@ -43,6 +43,7 @@ footer { text-align:center; color:#8a97a5; font-size:.8rem; margin:2.5rem 0 1rem
   <a href="/attendees">Attendee lists</a>
   {% if user %}
     <a href="/rank">My ranking</a>
+    <a href="/ballot/">Ballot groups</a>
     <a href="/me">My formals</a>
     <form class="inline" method="post" action="/logout">
       <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
@@ -60,6 +61,6 @@ footer { text-align:center; color:#8a97a5; font-size:.8rem; margin:2.5rem 0 1rem
 {% endwith %}
 {% block content %}{% endblock %}
 </main>
-<footer>Pembroke College formal swaps &middot; organised by students, for students</footer>
+<footer>Pembroke College formal swaps</footer>
 </body>
 </html>

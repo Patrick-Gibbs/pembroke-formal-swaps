@@ -91,6 +91,23 @@ CREATE TABLE IF NOT EXISTS audit_log (
     detail TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS ballot_groups (
+    id INTEGER PRIMARY KEY,
+    term TEXT NOT NULL,
+    leader_user_id INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS ballot_group_members (
+    id INTEGER PRIMARY KEY,
+    group_id INTEGER NOT NULL REFERENCES ballot_groups(id),
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    status TEXT NOT NULL DEFAULT 'invited',   -- invited | accepted | declined
+    invited_at TEXT NOT NULL DEFAULT (datetime('now')),
+    responded_at TEXT,
+    UNIQUE(group_id, user_id)
+);
+
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL

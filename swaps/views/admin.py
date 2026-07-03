@@ -153,9 +153,9 @@ def allocate():
     if request.method == "POST":
         term = request.form.get("term", term).strip()
         seed = request.form.get("seed", "").strip() or None
-        run_id, used_seed, assignments, log = run_allocation(db, term, seed)
-        flash(f"Allocation run #{run_id} complete: {len(assignments)} places "
-              f"assigned. Seed: {used_seed}", "ok")
+        run_id, used_seed, placed, log = run_allocation(db, term, seed)
+        flash(f"Allocation run #{run_id} complete: {placed} places assigned. "
+              f"Seed: {used_seed}", "ok")
         return redirect(url_for("admin.runs"))
     n_prefs = db.execute("SELECT COUNT(DISTINCT user_id) n FROM preferences WHERE term=?",
                          (term,)).fetchone()["n"]

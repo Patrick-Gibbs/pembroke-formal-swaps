@@ -53,6 +53,24 @@ def rank():
         flash("The ballot is not open right now.", "error")
         return redirect(url_for("main.index"))
 
+    from .ballot import accepted_group
+    group = accepted_group(db, user["id"], term)
+    is_group_member = bool(group and group["leader_user_id"] != user["id"])
+    group_size = 0
+    if group:
+        group_size = db.execute(
+            "SELECT COUNT(*) n FROM ballot_group_members WHERE group_id=? "
+            "AND status='accepted'", (group["id"],)).fetchone()["n"]
+
+    if is_group_member:
+        if request.method == "POST":
+            flash("You're in a group — your leader sets the ranking.", "error")
+        leader = db.execute("SELECT first_name, last_name FROM users WHERE id=?",
+                            (group["leader_user_id"],)).fetchone()
+        return render_template("rank.html", ranked=[], unranked=[], term=term,
+                               is_group_member=True, leader=leader,
+                               group_size=group_size)
+
     if request.method == "POST":
         order = request.form.get("order", "")
         ids = []
@@ -78,7 +96,8 @@ def rank():
     by_id = {f["id"]: f for f in open_formals}
     ranked = [by_id[i] for i in ranked_ids if i in by_id]
     unranked = [f for f in open_formals if f["id"] not in ranked_ids]
-    return render_template("rank.html", ranked=ranked, unranked=unranked, term=term)
+    return render_template("rank.html", ranked=ranked, unranked=unranked, term=term,
+                           is_group_member=False, leader=None, group_size=group_size)
 
 
 @bp.route("/attendees")

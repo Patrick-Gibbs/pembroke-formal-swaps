@@ -2,6 +2,43 @@
 {% block title %}Rank formals — Pembroke Formal Swaps{% endblock %}
 {% block content %}
 <h1>Rank your formals — {{ term }}</h1>
+
+{% if is_group_member %}
+<div class="card">
+  <p>You're balloting as part of <b>{{ leader['first_name'] }}
+  {{ leader['last_name'] }}</b>'s group ({{ group_size }} people).
+  The leader sets the ranking for everyone, so there's nothing for you to fill in
+  here — whatever the group draws, you all get together.</p>
+  <p>Manage or leave the group on the <a href="/ballot/">Ballot groups</a> page.</p>
+</div>
+{% else %}
+
+{% if group_size > 1 %}
+<div class="flash ok">You're the leader of a group of <b>{{ group_size }}</b> —
+this ranking counts for all of you, and the group needs {{ group_size }} free
+seats at a formal to get in.</div>
+{% endif %}
+
+<div class="card">
+  <h3>How the ballot works</h3>
+  <p>This isn't first-come-first-served. When the ballot closes, an automated
+  draw runs:</p>
+  <ul class="muted">
+    <li><b>Rank only what you want.</b> Order matters: everyone's 1st choice is
+    considered before anyone's 2nd choice.</li>
+    <li>If a formal has more bidders than seats, winners are drawn <b>at
+    random</b> (a recorded, re-runnable draw — no favouritism). If you miss out,
+    you automatically drop to your next choice in the same pass.</li>
+    <li><b>Fairness first:</b> nobody is given a second formal until everyone
+    who can still be seated somewhere they ranked has one. You leave
+    empty-handed only if everything you ranked filled up.</li>
+    <li>Ranking more formals never hurts your chances at your top choice — it
+    only gives you fallbacks.</li>
+    <li>Groups (see <a href="/ballot/">Ballot groups</a>) enter as one block
+    with the leader's ranking and win or lose together.</li>
+  </ul>
+</div>
+
 <p class="muted">Put the formals you want in order (1 = most wanted). Leave out any
 you don't want. You can edit until the ballot closes.</p>
 <form method="post" id="rankform">
@@ -30,6 +67,8 @@ you don't want. You can edit until the ballot closes.</p>
   </ul>
   <p><button>Save ranking</button></p>
 </form>
+{% endif %}
+{% if not is_group_member %}
 <script>
 function renumber() {
   const items = document.querySelectorAll('#ranked li');
@@ -70,4 +109,5 @@ function add(btn) {
 }
 renumber();
 </script>
+{% endif %}
 {% endblock %}

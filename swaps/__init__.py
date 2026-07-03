@@ -25,9 +25,11 @@ def create_app():
     from .views.auth import bp as auth_bp
     from .views.main import bp as main_bp
     from .views.admin import bp as admin_bp
+    from .views.ballot import bp as ballot_bp
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(ballot_bp)
 
     app.before_request(check_csrf)
     app.teardown_appcontext(close_db)

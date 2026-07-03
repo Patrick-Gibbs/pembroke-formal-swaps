@@ -41,6 +41,16 @@ def verification_email(to, link):
         f"<p>If you didn't register, ignore this email.</p>")
 
 
+def group_invite_email(to, leader_name, term, link):
+    return send(
+        to, f"{leader_name} invited you to a group ballot — Pembroke Formal Swaps",
+        f"<p><b>{leader_name}</b> has invited you to ballot as a group for "
+        f"formal swaps this term ({term}).</p>"
+        f"<p>If you accept, {leader_name} sets the ranking for the whole group "
+        f"and you'll all get the same formals together.</p>"
+        f"<p><a href=\"{link}\">Accept or decline the invitation here</a>.</p>")
+
+
 def slot_open_email(to, formal, link):
     return send(
         to, f"A place has opened: {formal['host_college']} formal on {formal['dt']}",

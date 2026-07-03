@@ -60,7 +60,7 @@ def free_seats(conn, formal_id, slots=None):
 def run_allocation(conn, term, seed=None, actor="admin"):
     """Run the ballot for every open formal in `term`. Existing active
     allocations keep their seats; the ballot fills remaining capacity for
-    users without a seat at that formal. Returns (run_id, seed, assignments, log)."""
+    users without a seat at that formal. Returns (run_id, seed, places, log)."""
     seed = seed or secrets.token_hex(8)
     with immediate(conn):
         formals = conn.execute(
@@ -78,34 +78,64 @@ def run_allocation(conn, term, seed=None, actor="admin"):
                 (f["id"],)).fetchone()["n"]
             capacity[f["id"]] = max(0, f["slots"] - taken - holds)
 
-        prefs = {}
+        raw_prefs = {}
         rows = conn.execute(
             "SELECT p.user_id, p.formal_id FROM preferences p "
             "JOIN users u ON u.id = p.user_id AND u.email_verified = 1 "
             "WHERE p.term = ? ORDER BY p.user_id, p.rank", (term,)).fetchall()
         for r in rows:
-            prefs.setdefault(r["user_id"], []).append(r["formal_id"])
-        # Users already holding an active seat at a formal must not get a
-        # second seat there: pass holdings in by pre-filtering their list.
+            raw_prefs.setdefault(r["user_id"], []).append(r["formal_id"])
         held = conn.execute(
             "SELECT user_id, formal_id FROM allocations WHERE status='active'").fetchall()
         held_set = {(h["user_id"], h["formal_id"]) for h in held}
-        prefs = {uid: [f for f in fl if (uid, f) not in held_set]
-                 for uid, fl in prefs.items()}
 
-        assignments, log = run_ballot(capacity, prefs, seed)
+        # Balloting units: a group (accepted members, leader's ranking, block
+        # size = member count) or a solo entrant. A formal any member already
+        # attends is dropped from the unit's list, and nobody may get a second
+        # seat at a formal they already hold.
+        unit_prefs, unit_sizes, unit_members = {}, {}, {}
+        grouped_users = set()
+        for g in conn.execute("SELECT id, leader_user_id FROM ballot_groups "
+                              "WHERE term=?", (term,)).fetchall():
+            members = [m["user_id"] for m in conn.execute(
+                "SELECT user_id FROM ballot_group_members WHERE group_id=? "
+                "AND status='accepted' ORDER BY user_id", (g["id"],)).fetchall()]
+            if not members:
+                continue
+            grouped_users.update(members)
+            plist = [f for f in raw_prefs.get(g["leader_user_id"], [])
+                     if all((m, f) not in held_set for m in members)]
+            if plist:
+                uid = f"g:{g['id']}"
+                unit_prefs[uid] = plist
+                unit_sizes[uid] = len(members)
+                unit_members[uid] = members
+        for u, plist in raw_prefs.items():
+            if u in grouped_users:
+                continue  # a group member's personal ranking is inert
+            plist = [f for f in plist if (u, f) not in held_set]
+            if plist:
+                unit_prefs[f"u:{u}"] = plist
+                unit_sizes[f"u:{u}"] = 1
+                unit_members[f"u:{u}"] = [u]
 
+        assignments, log = run_ballot(capacity, unit_prefs, seed, unit_sizes)
+
+        placed = 0
         for uid, fid, _rnd in assignments:
-            conn.execute(
-                "INSERT INTO allocations(user_id, formal_id, status, source) "
-                "VALUES (?,?,'active','ballot')", (uid, fid))
+            for member in unit_members[uid]:
+                conn.execute(
+                    "INSERT INTO allocations(user_id, formal_id, status, source) "
+                    "VALUES (?,?,'active','ballot')", (member, fid))
+                placed += 1
         conn.execute("UPDATE formals SET status='allocated' WHERE term=? AND status='open'",
                      (term,))
-        summary = f"{len(assignments)} places assigned; {len(log)} lotteries"
+        summary = (f"{placed} places assigned to {len(assignments)} unit-formal "
+                   f"pairs; {len(log)} lotteries")
         cur = conn.execute("INSERT INTO allocation_runs(term, seed, summary) VALUES (?,?,?)",
                            (term, seed, summary + "\n" + "\n".join(log)))
         audit(conn, actor, "run_allocation", f"term={term} seed={seed} {summary}")
-        return cur.lastrowid, seed, assignments, log
+        return cur.lastrowid, seed, placed, log
 
 
 # ------------------------------------------------------------------ cancel / release

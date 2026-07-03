@@ -91,7 +91,16 @@ VM needs touching.
 3. **Empty-handed case:** you get nothing only if every formal you ranked
    filled up — i.e. you had no satisfiable preference left. Seconds can then
    still be handed out (this matches the agreed fairness exception).
-4. **Reproducibility:** every run records its seed (Admin → Allocation runs,
+4. **Group balloting:** members may form one group per term (Ballot groups
+   tab). The leader invites registered members by name; invitees accept via
+   email link or the tab. Accepted groups enter the ballot as one block using
+   the **leader's ranking** — for each formal the whole group is seated
+   together or not at all, so a group needs `size` free seats to win. In an
+   oversubscribed draw, units (groups and solos) are drawn in random order and
+   admitted while they fit; a group that doesn't fit is passed over (leftover
+   seats stay winnable by smaller units) and cascades to its next choice.
+   Groups are capped at 6.
+5. **Reproducibility:** every run records its seed (Admin → Allocation runs,
    with a log of every lottery). Re-running with the same seed on unchanged
    data gives byte-identical results. Re-running after edits only fills seats,
    never revokes: existing active places are always kept.

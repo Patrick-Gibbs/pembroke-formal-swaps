@@ -9,9 +9,9 @@
   <label>Last name</label>
   <input type="text" name="last_name" required value="{{ form.get('last_name','') }}">
   <label>Cambridge email</label>
-  <input type="email" name="email" required placeholder="crsid@pem.cam.ac.uk" value="{{ form.get('email','') }}">
-  <p class="muted">Must be a <b>cam.ac.uk</b> address (any department/college subdomain).
-  We'll send a verification link.</p>
+  <input type="email" name="email" required placeholder="crsid@cam.ac.uk" value="{{ form.get('email','') }}">
+  <p class="muted">Any address ending in <b>cam.ac.uk</b> works (e.g.
+  crsid@cam.ac.uk or crsid@pem.cam.ac.uk). We'll send a verification link.</p>
   <label>Dietary requirements</label>
   {% for c in dietary_choices %}
     <label style="display:inline-block;font-weight:normal;margin:.15rem .8rem .15rem 0">

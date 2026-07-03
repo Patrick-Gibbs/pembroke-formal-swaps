@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Ballot groups — Pembroke Formal Swaps{% endblock %}
+{% block content %}
+<h1>Ballot groups</h1>
+
+<div class="card">
+  <h3>How group balloting works</h3>
+  <p>Ballot <b>as a group</b> and you all get the same outcome: the group enters the
+  ballot as one block, and for each formal you either all get places or none of you
+  do. One person (the <b>group leader</b>) sets the ranking for everyone — on the
+  <a href="/rank">My ranking</a> page — and invites the others, who accept here.</p>
+  <ul class="muted">
+    <li>You can be in <b>one group per term</b>. Accepting an invitation means your
+    own ranking is set aside; the leader's ranking counts for you.</li>
+    <li>The group needs enough free seats for <b>everyone</b> at a formal, so big
+    groups are harder to seat — groups are capped at {{ max_size }}.</li>
+    <li>Group placement doesn't jump any queue: in the random draw a group of
+    three counts like three friends who happen to win or lose together.</li>
+    <li>You can leave (or the leader can disband) any time before the ballot runs.
+    Cancelling after allocation is still individual.</li>
+  </ul>
+</div>
+
+{% if invites %}
+<div class="card">
+  <h3>Invitations for you</h3>
+  {% for i in invites %}
+  <p><b>{{ i['first_name'] }} {{ i['last_name'] }}</b> invited you to their group
+  ({{ term }}).
+    <form class="inline" method="post" action="/ballot/respond/{{ i['mid'] }}">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button name="action" value="accept">Accept</button>
+      <button name="action" value="decline" class="ghost">Decline</button>
+    </form>
+  </p>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if group %}
+<div class="card">
+  <h3>Your group ({{ term }})</h3>
+  <table>
+    <tr><th>Member</th><th>Status</th>{% if is_leader %}<th></th>{% endif %}</tr>
+    {% for m in members %}
+    <tr>
+      <td>{{ m['first_name'] }} {{ m['last_name'] }}
+          {% if m['user_id'] == group['leader_user_id'] %}<span class="muted">(leader)</span>{% endif %}</td>
+      <td>{{ m['status'] }}</td>
+      {% if is_leader %}
+      <td>{% if m['user_id'] != group['leader_user_id'] %}
+        <form class="inline" method="post" action="/ballot/remove/{{ m['mid'] }}">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <button class="small danger">Remove</button>
+        </form>{% endif %}
+      </td>
+      {% endif %}
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="muted">{{ n_accepted }} accepted member(s) — the ballot only counts
+  accepted members.</p>
+
+  {% if is_leader %}
+  <h3>Invite someone</h3>
+  <form method="post" action="/ballot/invite" id="inviteform">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="user_id" id="invite_user_id">
+    <input type="text" id="invite_name" placeholder="Start typing their name…"
+           autocomplete="off" style="max-width:20rem">
+    <button>Invite</button>
+    <div id="suggestions" style="max-width:20rem"></div>
+  </form>
+  <p class="muted">They must already be registered and verified. They'll get an
+  email and the invitation appears on this page for them.</p>
+  <p><b>Your <a href="/rank">ranking</a> applies to the whole group.</b></p>
+  <form method="post" action="/ballot/leave"
+        onsubmit="return confirm('Disband the group? Everyone will ballot individually again.')">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <button class="danger">Disband group</button>
+  </form>
+  {% else %}
+  <p>The leader's ranking covers you — you don't need to fill in preferences.</p>
+  <form method="post" action="/ballot/leave"
+        onsubmit="return confirm('Leave the group and ballot individually?')">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <button class="danger">Leave group</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if is_leader %}
+<script>
+const nameBox = document.getElementById('invite_name');
+const idBox = document.getElementById('invite_user_id');
+const sugg = document.getElementById('suggestions');
+let timer = null;
+nameBox.addEventListener('input', () => {
+  idBox.value = '';
+  clearTimeout(timer);
+  const q = nameBox.value.trim();
+  if (q.length < 2) { sugg.innerHTML = ''; return; }
+  timer = setTimeout(async () => {
+    const res = await fetch('/ballot/search?q=' + encodeURIComponent(q));
+    const people = await res.json();
+    sugg.innerHTML = '';
+    people.forEach(p => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'small ghost';
+      b.style.display = 'block'; b.style.margin = '.2rem 0'; b.style.width = '100%';
+      b.textContent = p.name;
+      b.onclick = () => { nameBox.value = p.name; idBox.value = p.id; sugg.innerHTML = ''; };
+      sugg.appendChild(b);
+    });
+    if (!people.length) sugg.innerHTML = '<p class="muted">No matching registered member.</p>';
+  }, 250);
+});
+</script>
+{% endif %}
+
+{% elif term %}
+<div class="card">
+  <h3>Start a group</h3>
+  <p>You're currently balloting individually. Start a group to bring friends along —
+  you'll be the leader, your ranking will count for everyone who accepts.</p>
+  <form method="post" action="/ballot/create">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <button>Start a group for {{ term }}</button>
+  </form>
+</div>
+{% else %}
+<p>No term is set up yet.</p>
+{% endif %}
+{% endblock %}
