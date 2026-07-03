@@ -66,13 +66,15 @@
   <form method="post" action="/ballot/invite" id="inviteform">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <input type="hidden" name="user_id" id="invite_user_id">
-    <input type="text" id="invite_name" placeholder="Start typing their name…"
+    <input type="text" id="invite_name" placeholder="Click and start typing their name…"
            autocomplete="off" style="max-width:20rem">
     <button>Invite</button>
     <div id="suggestions" style="max-width:20rem"></div>
   </form>
-  <p class="muted">They must already be registered and verified. They'll get an
-  email and the invitation appears on this page for them.</p>
+  <p class="muted">⚠️ You can only invite people who have <b>already registered
+  (and verified their email)</b> on this site — ask them to sign up first if they
+  don't appear in the suggestions. They'll get an email and the invitation
+  appears on this page for them.</p>
   <p><b>Your <a href="/rank">ranking</a> applies to the whole group.</b></p>
   <form method="post" action="/ballot/leave"
         onsubmit="return confirm('Disband the group? Everyone will ballot individually again.')">
@@ -95,25 +97,26 @@ const nameBox = document.getElementById('invite_name');
 const idBox = document.getElementById('invite_user_id');
 const sugg = document.getElementById('suggestions');
 let timer = null;
+async function showSuggestions(q) {
+  const res = await fetch('/ballot/search?q=' + encodeURIComponent(q));
+  const people = await res.json();
+  sugg.innerHTML = '';
+  people.forEach(p => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'small ghost';
+    b.style.display = 'block'; b.style.margin = '.2rem 0'; b.style.width = '100%';
+    b.textContent = p.name;
+    b.onclick = () => { nameBox.value = p.name; idBox.value = p.id; sugg.innerHTML = ''; };
+    sugg.appendChild(b);
+  });
+  if (!people.length) sugg.innerHTML =
+    '<p class="muted">No matching registered member — they need to register first.</p>';
+}
+nameBox.addEventListener('focus', () => showSuggestions(nameBox.value.trim()));
 nameBox.addEventListener('input', () => {
   idBox.value = '';
   clearTimeout(timer);
-  const q = nameBox.value.trim();
-  if (q.length < 2) { sugg.innerHTML = ''; return; }
-  timer = setTimeout(async () => {
-    const res = await fetch('/ballot/search?q=' + encodeURIComponent(q));
-    const people = await res.json();
-    sugg.innerHTML = '';
-    people.forEach(p => {
-      const b = document.createElement('button');
-      b.type = 'button'; b.className = 'small ghost';
-      b.style.display = 'block'; b.style.margin = '.2rem 0'; b.style.width = '100%';
-      b.textContent = p.name;
-      b.onclick = () => { nameBox.value = p.name; idBox.value = p.id; sugg.innerHTML = ''; };
-      sugg.appendChild(b);
-    });
-    if (!people.length) sugg.innerHTML = '<p class="muted">No matching registered member.</p>';
-  }, 250);
+  timer = setTimeout(() => showSuggestions(nameBox.value.trim()), 250);
 });
 </script>
 {% endif %}

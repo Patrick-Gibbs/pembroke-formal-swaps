@@ -82,8 +82,6 @@ def create():
 def search():
     db = get_db()
     q = request.args.get("q", "").strip()
-    if len(q) < 2:
-        return jsonify([])
     like = f"%{q}%"
     rows = db.execute(
         "SELECT id, first_name, last_name FROM users WHERE email_verified=1 "

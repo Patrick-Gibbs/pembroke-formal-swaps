@@ -42,8 +42,9 @@ def register():
         if not first or not last:
             errors.append("Name is required.")
         if not EMAIL_RE.match(email):
-            errors.append("Email must be a cam.ac.uk address "
-                          "(e.g. crsid@pem.cam.ac.uk or any *.cam.ac.uk).")
+            errors.append("That doesn't look like a University of Cambridge email — "
+                          "it must end in cam.ac.uk (e.g. crsid@cam.ac.uk or "
+                          "crsid@pem.cam.ac.uk).")
         if not PIN_RE.match(pin):
             errors.append("PIN must be exactly 4 digits.")
         if errors:
