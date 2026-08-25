@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Check your email</h1>
+<div class="card">
+<p>If <b>{{ email }}</b> has a verified account here, a PIN reset link is on its
+way (valid for 1 hour). Check spam if nothing arrives.</p>
+<p class="muted"><a href="/login">Back to log in</a></p>
+</div>
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Reset PIN — Pembroke Formal Swaps{% endblock %}
+{% block content %}
+<h1>Choose a new PIN</h1>
+<form method="post">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <label>New 4-digit PIN</label>
+  <input type="password" name="pin" inputmode="numeric" pattern="\d{4}" maxlength="4" required>
+  <div class="note">⚠️ A 4-digit PIN is <b>low-security</b> — don't reuse a PIN
+  that means something to you (bank card, phone unlock).</div>
+  <p><button>Set new PIN</button></p>
+</form>
+{% endblock %}

@@ -41,6 +41,14 @@ def verification_email(to, link):
         f"<p>If you didn't register, ignore this email.</p>")
 
 
+def pin_reset_email(to, link):
+    return send(
+        to, "Reset your PIN — Pembroke Formal Swaps",
+        f"<p>Someone (hopefully you) asked to reset the PIN for this account.</p>"
+        f"<p><a href=\"{link}\">Choose a new PIN here</a> (link valid for 1 hour).</p>"
+        f"<p>If this wasn't you, ignore this email — your PIN is unchanged.</p>")
+
+
 def group_invite_email(to, leader_name, term, link):
     return send(
         to, f"{leader_name} invited you to a group ballot — Pembroke Formal Swaps",

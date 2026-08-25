@@ -22,6 +22,13 @@ def _serializer():
     return URLSafeTimedSerializer(config.SECRET_KEY, salt="email-verify")
 
 
+def _reset_serializer():
+    return URLSafeTimedSerializer(config.SECRET_KEY, salt="pin-reset")
+
+
+RESET_TOKEN_MAX_AGE = 3600
+
+
 def _send_verification(user_id, email):
     token = _serializer().dumps({"uid": user_id})
     link = f"{config.SITE_URL}{url_for('auth.verify', token=token)}"
@@ -122,6 +129,56 @@ def login():
         nxt = request.args.get("next", "")
         return redirect(nxt if nxt.startswith("/") else url_for("main.index"))
     return render_template("login.html")
+
+
+@bp.route("/forgot-pin", methods=["GET", "POST"])
+def forgot_pin():
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        db = get_db()
+        ip = client_ip()
+        if ip_blocked(db, "reset", ip):
+            flash("Too many reset requests from your network. Try again later.", "error")
+            return render_template("forgot_pin.html"), 429
+        record_attempt(db, "reset", email, ip, False)
+        row = db.execute("SELECT * FROM users WHERE email=? AND email_verified=1",
+                         (email,)).fetchone()
+        if row:
+            token = _reset_serializer().dumps({"uid": row["id"]})
+            link = f"{config.SITE_URL}{url_for('auth.reset_pin', token=token)}"
+            emailer.pin_reset_email(email, link)
+        # Same response either way: don't reveal whether the email is registered.
+        return render_template("forgot_pin_sent.html", email=email)
+    return render_template("forgot_pin.html")
+
+
+@bp.route("/reset-pin/<token>", methods=["GET", "POST"])
+def reset_pin(token):
+    try:
+        data = _reset_serializer().loads(token, max_age=RESET_TOKEN_MAX_AGE)
+    except SignatureExpired:
+        flash("That reset link has expired — request a new one.", "error")
+        return redirect(url_for("auth.forgot_pin"))
+    except BadSignature:
+        flash("Invalid reset link.", "error")
+        return redirect(url_for("auth.forgot_pin"))
+    db = get_db()
+    user = db.execute("SELECT * FROM users WHERE id=? AND email_verified=1",
+                      (data["uid"],)).fetchone()
+    if user is None:
+        flash("Invalid reset link.", "error")
+        return redirect(url_for("auth.forgot_pin"))
+    if request.method == "POST":
+        pin = request.form.get("pin", "")
+        if not PIN_RE.match(pin):
+            flash("PIN must be exactly 4 digits.", "error")
+            return render_template("reset_pin.html", token=token)
+        db.execute("UPDATE users SET pin_hash=? WHERE id=?",
+                   (hash_secret(pin), user["id"]))
+        audit(db, f"user:{user['id']}", "pin_reset", "via email link")
+        flash("PIN updated — log in with your new PIN.", "ok")
+        return redirect(url_for("auth.login"))
+    return render_template("reset_pin.html", token=token)
 
 
 @bp.route("/logout", methods=["POST"])

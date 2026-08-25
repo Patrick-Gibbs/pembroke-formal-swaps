@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Forgot PIN — Pembroke Formal Swaps{% endblock %}
+{% block content %}
+<h1>Forgot your PIN?</h1>
+<p>Enter your registered Cambridge email and we'll send you a link to choose a
+new PIN.</p>
+<form method="post">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <label>Email</label>
+  <input type="email" name="email" required>
+  <p><button>Send reset link</button></p>
+</form>
+{% endblock %}
