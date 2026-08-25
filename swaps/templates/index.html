@@ -34,9 +34,11 @@
   <p>No formals have been announced for {{ term }} yet.</p>
 {% else %}
   {% if ballot_open %}
-    <div class="flash ok">The ballot is <b>open</b> —
+    <div class="flash ok">The ballot is <b>open</b>{% if ballot_closes %} — closes <b>{{ ballot_closes }}</b>{% endif %} —
       {% if user %}<a href="/rank">rank your formals now</a>.{% else %}<a href="/register">register</a> or <a href="/login">log in</a> to rank your formals.{% endif %}
     </div>
+  {% elif opens_soon %}
+    <div class="flash ok">The ballot opens <b>{{ ballot_opens }}</b>{% if ballot_closes %} and closes <b>{{ ballot_closes }}</b>{% endif %} — <a href="/register">register now</a> so you're ready.</div>
   {% endif %}
   <table>
     <tr><th>College</th><th>Date &amp; time</th><th>Price</th><th>Places</th><th>Free now</th><th></th></tr>

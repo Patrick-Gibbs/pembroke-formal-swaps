@@ -22,13 +22,20 @@ def _term_formals(db, term):
         "ORDER BY dt", (term,)).fetchall()
 
 
+def _effective_window(db, f):
+    """A formal's ballot window: its own override if set, else the term-wide
+    window from settings. Returns (open_str, close_str), either may be ''."""
+    return (f["ballot_open"] or get_setting(db, "term_ballot_open"),
+            f["ballot_close"] or get_setting(db, "term_ballot_close"))
+
+
 def _ballot_window(db, term):
-    """Ballot is open if now is inside ANY open formal's window (they are set
-    per formal; admin normally sets the same window for the whole term)."""
+    """True if any open formal's effective window contains now."""
     now = local_now()
     for f in db.execute("SELECT ballot_open, ballot_close FROM formals "
                         "WHERE term=? AND status='open'", (term,)).fetchall():
-        if parse_local(f["ballot_open"]) <= now <= parse_local(f["ballot_close"]):
+        o, c = _effective_window(db, f)
+        if o and c and parse_local(o) <= now <= parse_local(c):
             return True
     return False
 
@@ -38,8 +45,13 @@ def index():
     db = get_db()
     term = get_setting(db, "current_term")
     formals = _term_formals(db, term) if term else []
+    t_open = get_setting(db, "term_ballot_open")
+    t_close = get_setting(db, "term_ballot_close")
+    opens_soon = bool(t_open) and local_now() < parse_local(t_open)
     return render_template("index.html", formals=formals, term=term,
                            ballot_open=_ballot_window(db, term) if term else False,
+                           ballot_closes=t_close, ballot_opens=t_open,
+                           opens_soon=opens_soon,
                            free_seats={f["id"]: free_seats(db, f["id"], f["slots"])
                                        for f in formals})
 
@@ -104,7 +116,8 @@ def rank():
     ranked = [by_id[i] for i in ranked_ids if i in by_id]
     unranked = [f for f in open_formals if f["id"] not in ranked_ids]
     return render_template("rank.html", ranked=ranked, unranked=unranked, term=term,
-                           is_group_member=False, leader=None, group_size=group_size)
+                           is_group_member=False, leader=None, group_size=group_size,
+                           ballot_closes=get_setting(db, "term_ballot_close"))
 
 
 @bp.route("/attendees")

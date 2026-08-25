@@ -17,10 +17,13 @@
   <input type="number" name="slots" min="1" required value="{{ f['slots'] if f else 10 }}">
   <label>Term</label>
   <input type="text" name="term" required value="{{ f['term'] if f else default_term }}">
-  <label>Ballot opens (UK time)</label>
-  <input type="datetime-local" name="ballot_open" required value="{{ (f['ballot_open'].replace(' ', 'T')) if f else '' }}">
-  <label>Ballot closes (UK time)</label>
-  <input type="datetime-local" name="ballot_close" required value="{{ (f['ballot_close'].replace(' ', 'T')) if f else '' }}">
+  <label>Ballot opens — override (optional)</label>
+  <input type="datetime-local" name="ballot_open" value="{{ (f['ballot_open'].replace(' ', 'T')) if f else '' }}">
+  <label>Ballot closes — override (optional)</label>
+  <input type="datetime-local" name="ballot_close" value="{{ (f['ballot_close'].replace(' ', 'T')) if f else '' }}">
+  <p class="muted">Leave both blank to use the term-wide ballot window from the
+  dashboard settings — the normal case. Set them only for a formal that ballots
+  on its own schedule.</p>
   <label>Status</label>
   <select name="status">
     {% for s in ['open','allocated','cancelled'] %}

@@ -62,6 +62,8 @@ def dashboard():
     return render_template("admin/dashboard.html", formals=formals, stats=stats,
                            users_n=users_n,
                            term=get_setting(db, "current_term"),
+                           term_ballot_open=get_setting(db, "term_ballot_open"),
+                           term_ballot_close=get_setting(db, "term_ballot_close"),
                            list_public=get_setting(db, "attendee_list_public") == "1")
 
 
@@ -73,7 +75,11 @@ def settings():
     set_setting(db, "current_term", term)
     set_setting(db, "attendee_list_public",
                 "1" if request.form.get("attendee_list_public") else "0")
-    audit(db, "admin", "settings", f"term={term} "
+    t_open = request.form.get("term_ballot_open", "").replace("T", " ").strip()
+    t_close = request.form.get("term_ballot_close", "").replace("T", " ").strip()
+    set_setting(db, "term_ballot_open", t_open)
+    set_setting(db, "term_ballot_close", t_close)
+    audit(db, "admin", "settings", f"term={term} window={t_open}..{t_close} "
           f"public={request.form.get('attendee_list_public', '0')}")
     flash("Settings saved.", "ok")
     return redirect(url_for("admin.dashboard"))
