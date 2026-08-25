@@ -27,6 +27,8 @@ MAIL_FROM = os.environ.get("MAIL_FROM", "noreply@pembrokeformalswaps.com")
 EMAIL_MODE = os.environ.get("EMAIL_MODE", "dev")  # 'live' | 'dev'
 SITE_URL = os.environ.get("SITE_URL", "https://pembrokeformalswaps.com")
 DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE_DIR, "data", "swaps.db"))
+PHOTOS_DIR = os.environ.get("PHOTOS_DIR",
+                            os.path.join(os.path.dirname(DB_PATH), "photos"))
 LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "8000"))
 # Behind Caddy we trust X-Forwarded-For for rate limiting.
 TRUST_PROXY = os.environ.get("TRUST_PROXY", "1") == "1"

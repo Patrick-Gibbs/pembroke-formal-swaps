@@ -26,6 +26,14 @@ def init_db(db_path=None):
     conn = connect(path)
     with open(SCHEMA_PATH) as f:
         conn.executescript(f.read())
+    # Columns added after first deployment (CREATE IF NOT EXISTS won't add them).
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(formals)")}
+    for col, ddl in [("location", "TEXT NOT NULL DEFAULT ''"),
+                     ("instructions", "TEXT NOT NULL DEFAULT ''"),
+                     ("reminder_sent", "INTEGER NOT NULL DEFAULT 0"),
+                     ("review_sent", "INTEGER NOT NULL DEFAULT 0")]:
+        if col not in cols:
+            conn.execute(f"ALTER TABLE formals ADD COLUMN {col} {ddl}")
     conn.close()
 
 

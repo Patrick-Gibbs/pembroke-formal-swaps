@@ -1,6 +1,33 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Formal swaps{% if term %} — {{ term }}{% endif %}</h1>
+<div class="card" style="background:linear-gradient(135deg,#003b6f,#0a5ea8);color:#fff;border:0;padding:1.6rem 1.4rem">
+  <h1 style="color:#fff;margin:0 0 .4rem">Welcome to pembrokeformalswaps.com</h1>
+  <p style="margin:.2rem 0 0;font-size:1.05rem">Formal dinners at other Cambridge
+  colleges, organised for Pembroke members — fairly, by ballot.</p>
+</div>
+
+<div class="card">
+  <h3>How it works</h3>
+  <ol>
+    <li><b>Register</b> with your Cambridge email and rank the formals you'd like
+    this term — solo, or <a href="/ballot/">as a group</a> that gets seated together.</li>
+    <li>When the ballot closes, places are assigned by a <b>preference-honouring
+    random draw</b> — fair, seeded, and no one gets a second formal before
+    everyone who can be seated has one. You'll get your result by email, with
+    calendar invitations attached.</li>
+    <li>Plans change? <b>Cancel</b> up to 24 hours before; freed places are
+    released at a random moment and offered to everyone —
+    subscribe to a formal to be emailed when a spot opens.</li>
+    <li>Afterwards, <b>rate your evening</b> out of 5 stars and browse
+    <a href="/reviews">reviews of every college</a> before picking next term's swaps.</li>
+  </ol>
+  {% if not user %}
+  <p><a class="btn" href="/register">Register</a>
+     <a class="btn ghost" href="/login">Log in</a></p>
+  {% endif %}
+</div>
+
+<h1>Formals{% if term %} — {{ term }}{% endif %}</h1>
 {% if not term %}
   <p>No term is set up yet. Check back soon!</p>
 {% elif not formals %}

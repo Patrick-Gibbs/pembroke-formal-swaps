@@ -93,7 +93,8 @@ def test_db_run_allocation_group_shares_outcome(db):
     db.execute("INSERT INTO preferences(user_id, formal_id, rank, term) "
                "VALUES (2, 2, 1, 'T1')")
 
-    _run, seed, placed, _log = run_allocation(db, "T1", seed="grouptest")
+    _run, seed, placed, _log, new_allocs = run_allocation(db, "T1", seed="grouptest")
+    assert sorted(new_allocs) == [(1, 1), (2, 1), (3, 1), (4, 2)]
     rows = db.execute("SELECT user_id, formal_id FROM allocations "
                       "WHERE status='active' ORDER BY user_id").fetchall()
     by_user = {r["user_id"]: r["formal_id"] for r in rows}

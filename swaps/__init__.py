@@ -19,7 +19,7 @@ def create_app():
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SECURE=config.COOKIE_SECURE,
         SESSION_COOKIE_SAMESITE="Lax",
-        MAX_CONTENT_LENGTH=64 * 1024,
+        MAX_CONTENT_LENGTH=6 * 1024 * 1024,  # allow review photo uploads
     )
 
     from .views.auth import bp as auth_bp

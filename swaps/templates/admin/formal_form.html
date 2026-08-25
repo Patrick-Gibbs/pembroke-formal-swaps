@@ -9,6 +9,10 @@
   <input type="datetime-local" name="dt" required value="{{ (f['dt'].replace(' ', 'T')) if f else '' }}">
   <label>Price info</label>
   <input type="text" name="price" placeholder="e.g. £16.50, pay host college" value="{{ f['price'] if f else '' }}">
+  <label>Location (goes in the calendar invite)</label>
+  <input type="text" name="location" placeholder="e.g. Queens' College Old Hall — meet at the Porters' Lodge" value="{{ f['location'] if f else '' }}">
+  <label>Instructions (dress code, arrival time, payment — email + calendar)</label>
+  <textarea name="instructions" rows="4" style="width:100%;max-width:26rem;padding:.45rem;border:1px solid #b8c4d0;border-radius:5px;font-size:1rem">{{ f['instructions'] if f else '' }}</textarea>
   <label>Number of slots</label>
   <input type="number" name="slots" min="1" required value="{{ f['slots'] if f else 10 }}">
   <label>Term</label>

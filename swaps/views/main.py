@@ -1,10 +1,17 @@
-from flask import (Blueprint, abort, flash, redirect, render_template, request,
-                   url_for)
+import os
+import secrets
+import statistics
 
+from flask import (Blueprint, abort, flash, redirect, render_template, request,
+                   send_from_directory, url_for)
+
+from .. import config
 from ..db import get_db, get_setting, audit
 from ..security import current_user, login_required
 from ..services import (CancelError, ClaimError, cancel_allocation, claim_seat,
                         free_seats, hours_until_formal, local_now, parse_local)
+
+PHOTO_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
 bp = Blueprint("main", __name__)
 
@@ -141,7 +148,10 @@ def me():
         (user["id"],)).fetchall()
     cancellable = {a["id"]: (a["status"] == "active"
                              and hours_until_formal(a["dt"]) >= 24) for a in allocs}
-    return render_template("me.html", allocs=allocs, subs=subs, cancellable=cancellable)
+    past = {a["id"]: (a["status"] == "active" and hours_until_formal(a["dt"]) < 0)
+            for a in allocs}
+    return render_template("me.html", allocs=allocs, subs=subs,
+                           cancellable=cancellable, past=past)
 
 
 @bp.route("/cancel/<int:alloc_id>", methods=["POST"])
@@ -173,6 +183,89 @@ def claim(formal_id):
             flash(str(e), "error")
     return render_template("claim.html", formal=f,
                            free=free_seats(db, formal_id, f["slots"]))
+
+
+@bp.route("/review/<int:formal_id>", methods=["GET", "POST"])
+@login_required
+def review(formal_id):
+    db = get_db()
+    user = current_user()
+    f = db.execute("SELECT * FROM formals WHERE id=?", (formal_id,)).fetchone()
+    if f is None:
+        abort(404)
+    attended = db.execute(
+        "SELECT 1 FROM allocations WHERE user_id=? AND formal_id=? AND status='active'",
+        (user["id"], formal_id)).fetchone()
+    if not attended:
+        flash("Only attendees of a formal can review it.", "error")
+        return redirect(url_for("main.reviews_page"))
+    if parse_local(f["dt"]) > local_now():
+        flash("You can review after the formal has happened.", "error")
+        return redirect(url_for("main.me"))
+
+    existing = db.execute("SELECT * FROM reviews WHERE user_id=? AND formal_id=?",
+                          (user["id"], formal_id)).fetchone()
+    if request.method == "POST":
+        course_stars = sum(1 for c in ("course1", "course2", "course3")
+                           if request.form.get(c))
+        vibe_stars = sum(1 for v in ("vibe_hosts", "vibe_college")
+                         if request.form.get(v))
+        text = request.form.get("review", "").strip()[:2000]
+
+        photo_name = existing["photo"] if existing else ""
+        file = request.files.get("photo")
+        if file and file.filename:
+            ext = os.path.splitext(file.filename)[1].lower()
+            if ext not in PHOTO_EXTS:
+                flash("Photo must be a JPG, PNG, WebP or GIF.", "error")
+                return render_template("review_form.html", f=f, r=existing)
+            os.makedirs(config.PHOTOS_DIR, exist_ok=True)
+            if photo_name:  # replacing an earlier upload
+                try:
+                    os.remove(os.path.join(config.PHOTOS_DIR, photo_name))
+                except OSError:
+                    pass
+            photo_name = f"r{formal_id}-{user['id']}-{secrets.token_hex(4)}{ext}"
+            file.save(os.path.join(config.PHOTOS_DIR, photo_name))
+
+        db.execute(
+            "INSERT INTO reviews(user_id, formal_id, course_stars, vibe_stars, "
+            "review, photo) VALUES (?,?,?,?,?,?) "
+            "ON CONFLICT(user_id, formal_id) DO UPDATE SET course_stars=excluded."
+            "course_stars, vibe_stars=excluded.vibe_stars, review=excluded.review, "
+            "photo=excluded.photo, created_at=datetime('now')",
+            (user["id"], formal_id, course_stars, vibe_stars, text, photo_name))
+        flash(f"Thanks — you rated it {course_stars + vibe_stars}/5. "
+              "You can edit your review any time.", "ok")
+        return redirect(url_for("main.reviews_page"))
+    return render_template("review_form.html", f=f, r=existing)
+
+
+@bp.route("/reviews")
+def reviews_page():
+    db = get_db()
+    rows = db.execute(
+        "SELECT r.*, f.host_college, f.dt, u.first_name, u.last_name "
+        "FROM reviews r JOIN formals f ON f.id = r.formal_id "
+        "JOIN users u ON u.id = r.user_id ORDER BY r.created_at DESC").fetchall()
+    by_college = {}
+    for r in rows:
+        by_college.setdefault(r["host_college"], []).append(
+            r["course_stars"] + r["vibe_stars"])
+    stats = []
+    for college, scores in by_college.items():
+        mean = statistics.mean(scores)
+        sd = statistics.stdev(scores) if len(scores) > 1 else 0.0
+        stats.append((college, mean, sd, len(scores)))
+    stats.sort(key=lambda s: -s[1])
+    return render_template("reviews.html", rows=rows, stats=stats)
+
+
+@bp.route("/photos/<path:name>")
+def photo(name):
+    if "/" in name or name.startswith("."):
+        abort(404)
+    return send_from_directory(config.PHOTOS_DIR, name, max_age=86400)
 
 
 @bp.route("/formals/<int:formal_id>/subscribe", methods=["POST"])

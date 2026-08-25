@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Review — Pembroke Formal Swaps{% endblock %}
+{% block content %}
+<h1>Rate the {{ f['host_college'] }} formal</h1>
+<p class="muted">{{ f['dt'] }} &middot; Out of 5 stars: one per good course, two for the vibes.</p>
+<form method="post" enctype="multipart/form-data">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <div class="card">
+    <h3>The food (3 stars)</h3>
+    <label style="font-weight:normal"><input type="checkbox" name="course1"
+      {% if r and r['course_stars'] >= 1 %}checked{% endif %}> ⭐ First course was good</label>
+    <label style="font-weight:normal"><input type="checkbox" name="course2"
+      {% if r and r['course_stars'] >= 2 %}checked{% endif %}> ⭐ Second course was good</label>
+    <label style="font-weight:normal"><input type="checkbox" name="course3"
+      {% if r and r['course_stars'] >= 3 %}checked{% endif %}> ⭐ Third course was good</label>
+    <h3>The vibes (2 stars)</h3>
+    <label style="font-weight:normal"><input type="checkbox" name="vibe_hosts"
+      {% if r and r['vibe_stars'] >= 1 %}checked{% endif %}> ⭐ The hosts were great</label>
+    <label style="font-weight:normal"><input type="checkbox" name="vibe_college"
+      {% if r and r['vibe_stars'] >= 2 %}checked{% endif %}> ⭐ Beautiful college &amp; atmosphere</label>
+  </div>
+  <label>Your review (optional)</label>
+  <textarea name="review" rows="5" style="width:100%;max-width:32rem;padding:.45rem;border:1px solid #b8c4d0;border-radius:5px;font-size:1rem" placeholder="How was it?">{{ r['review'] if r else '' }}</textarea>
+  <label>Photo (optional, JPG/PNG/WebP/GIF, max 6&nbsp;MB)</label>
+  <input type="file" name="photo" accept=".jpg,.jpeg,.png,.webp,.gif">
+  {% if r and r['photo'] %}<p class="muted">You already uploaded a photo — choosing a new one replaces it.</p>{% endif %}
+  <p><button>{{ 'Update review' if r else 'Post review' }}</button></p>
+</form>
+<p class="muted">Your review appears with your first name on the public
+<a href="/reviews">reviews page</a>.</p>
+{% endblock %}

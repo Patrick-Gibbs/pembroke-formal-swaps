@@ -1,4 +1,5 @@
 """Single outbound channel: Resend. EMAIL_MODE=dev logs to stdout instead."""
+import base64
 import logging
 
 import requests
@@ -10,16 +11,23 @@ log = logging.getLogger("swaps.email")
 RESEND_URL = "https://api.resend.com/emails"
 
 
-def send(to, subject, html):
-    """Send one email. Returns True on success. Never raises."""
+def send(to, subject, html, attachments=None):
+    """Send one email. attachments: [(filename, bytes)]. Returns True on
+    success. Never raises."""
     if config.EMAIL_MODE != "live":
-        log.info("[dev email] to=%s subject=%r\n%s", to, subject, html)
-        print(f"--- DEV EMAIL to={to} subject={subject!r} ---\n{html}\n---", flush=True)
+        names = [a[0] for a in (attachments or [])]
+        log.info("[dev email] to=%s subject=%r attachments=%s", to, subject, names)
+        print(f"--- DEV EMAIL to={to} subject={subject!r} attachments={names} ---"
+              f"\n{html}\n---", flush=True)
         return True
+    payload = {"from": config.MAIL_FROM, "to": [to], "subject": subject, "html": html}
+    if attachments:
+        payload["attachments"] = [
+            {"filename": name, "content": base64.b64encode(data).decode()}
+            for name, data in attachments]
     try:
         r = requests.post(
-            RESEND_URL,
-            json={"from": config.MAIL_FROM, "to": [to], "subject": subject, "html": html},
+            RESEND_URL, json=payload,
             headers={"Authorization": f"Bearer {config.RESEND_API_KEY}"},
             timeout=10,
         )
@@ -30,6 +38,18 @@ def send(to, subject, html):
     except requests.RequestException as e:
         log.error("Resend request failed for %s: %s", to, e)
         return False
+
+
+def _formal_block(f):
+    parts = [f"<p><b>{f['host_college']}</b> — {f['dt']}"]
+    if f["price"]:
+        parts.append(f"<br>Price: {f['price']}")
+    if f["location"]:
+        parts.append(f"<br>Where: {f['location']}")
+    if f["instructions"]:
+        parts.append(f"<br>{f['instructions']}")
+    parts.append("</p>")
+    return "".join(parts)
 
 
 def verification_email(to, link):
@@ -65,3 +85,50 @@ def slot_open_email(to, formal, link):
         f"<p>A place has just opened up for the <b>{formal['host_college']}</b> formal "
         f"on <b>{formal['dt']}</b>.</p>"
         f"<p><a href=\"{link}\">Claim it here</a> — first come, first served.</p>")
+
+
+def allocation_result_email(to, formals, ics_files):
+    """Ballot result for a winner. formals: rows; ics_files: [(name, bytes)]."""
+    n = len(formals)
+    blocks = "".join(_formal_block(f) for f in formals)
+    return send(
+        to,
+        f"Your formal swap result{'s' if n > 1 else ''} — "
+        + ", ".join(f["host_college"] for f in formals),
+        f"<p>Good news — the ballot has run and you got "
+        f"{'these formals' if n > 1 else 'a place at this formal'}:</p>"
+        f"{blocks}"
+        f"<p>Calendar invitations are attached — open one to add the formal to "
+        f"your calendar.</p>"
+        f"<p>Manage your places (or cancel, up to 24h before) at "
+        f"<a href=\"{config.SITE_URL}/me\">{config.SITE_URL}/me</a>.</p>",
+        attachments=ics_files)
+
+
+def no_place_email(to, term):
+    return send(
+        to, "Formal swap ballot result — Pembroke Formal Swaps",
+        f"<p>The formal swap ballot for {term} has run, and unfortunately the "
+        f"formals you ranked all filled up before your turn — you don't have a "
+        f"place this time.</p>"
+        f"<p>Places do open up when people cancel: use “Notify me” on any formal at "
+        f"<a href=\"{config.SITE_URL}\">{config.SITE_URL}</a> and you'll get an "
+        f"email the moment a place is released — first come, first served.</p>")
+
+
+def reminder_email(to, formal, ics_files):
+    return send(
+        to, f"Today: {formal['host_college']} formal at {formal['dt'][11:16]}",
+        f"<p>A friendly reminder — you're going to a formal <b>today</b>:</p>"
+        f"{_formal_block(formal)}"
+        f"<p>Have a wonderful evening!</p>",
+        attachments=ics_files)
+
+
+def review_request_email(to, formal, link):
+    return send(
+        to, f"How was the {formal['host_college']} formal?",
+        f"<p>Hope you enjoyed the <b>{formal['host_college']}</b> formal tonight!</p>"
+        f"<p><a href=\"{link}\">Rate your experience out of 5 stars</a> — one star "
+        f"per good course, two for the vibes — and leave a review or photo if you "
+        f"like. It helps everyone pick next term's swaps.</p>")

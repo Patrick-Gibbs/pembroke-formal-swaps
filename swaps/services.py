@@ -60,7 +60,8 @@ def free_seats(conn, formal_id, slots=None):
 def run_allocation(conn, term, seed=None, actor="admin"):
     """Run the ballot for every open formal in `term`. Existing active
     allocations keep their seats; the ballot fills remaining capacity for
-    users without a seat at that formal. Returns (run_id, seed, places, log)."""
+    users without a seat at that formal.
+    Returns (run_id, seed, places, log, new_allocs)."""
     seed = seed or secrets.token_hex(8)
     with immediate(conn):
         formals = conn.execute(
@@ -121,13 +122,14 @@ def run_allocation(conn, term, seed=None, actor="admin"):
 
         assignments, log = run_ballot(capacity, unit_prefs, seed, unit_sizes)
 
-        placed = 0
+        new_allocs = []  # (user_id, formal_id) inserted by this run
         for uid, fid, _rnd in assignments:
             for member in unit_members[uid]:
                 conn.execute(
                     "INSERT INTO allocations(user_id, formal_id, status, source) "
                     "VALUES (?,?,'active','ballot')", (member, fid))
-                placed += 1
+                new_allocs.append((member, fid))
+        placed = len(new_allocs)
         conn.execute("UPDATE formals SET status='allocated' WHERE term=? AND status='open'",
                      (term,))
         summary = (f"{placed} places assigned to {len(assignments)} unit-formal "
@@ -135,7 +137,7 @@ def run_allocation(conn, term, seed=None, actor="admin"):
         cur = conn.execute("INSERT INTO allocation_runs(term, seed, summary) VALUES (?,?,?)",
                            (term, seed, summary + "\n" + "\n".join(log)))
         audit(conn, actor, "run_allocation", f"term={term} seed={seed} {summary}")
-        return cur.lastrowid, seed, placed, log
+        return cur.lastrowid, seed, placed, log, new_allocs
 
 
 # ------------------------------------------------------------------ cancel / release
@@ -204,6 +206,63 @@ def claim_seat(conn, user_id, formal_id, actor=None):
             conn.execute("UPDATE released_slots SET claimed_by=?, claimed_at=? WHERE id=?",
                          (user_id, utcnow_str(), row["id"]))
         audit(conn, actor or f"user:{user_id}", "claim", f"formal={formal_id}")
+
+
+def attendee_emails(conn, formal_id):
+    return [r["email"] for r in conn.execute(
+        "SELECT u.email FROM allocations a JOIN users u ON u.id = a.user_id "
+        "WHERE a.formal_id=? AND a.status='active' AND u.email_verified=1",
+        (formal_id,)).fetchall()]
+
+
+def send_scheduled_emails(conn, send_reminder, send_review, now=None):
+    """Day-of emails. Called periodically by the worker thread.
+
+    - 09:00 UK on the day of a formal: courtesy reminder to every attendee
+      (skipped entirely if the formal has already started when we first check,
+      e.g. after prolonged downtime).
+    - 21:00 UK on the day of the formal (and not before the formal's start):
+      review request to every attendee.
+
+    send_reminder(formal_row, [emails]) / send_review(formal_row, [emails])
+    do the delivery. Flags are flipped inside an immediate transaction first,
+    so emails go at most once even with overlapping calls."""
+    now = now or local_now()
+    fired = []
+    rows = conn.execute(
+        "SELECT id FROM formals WHERE status IN ('open','allocated') "
+        "AND (reminder_sent=0 OR review_sent=0)").fetchall()
+    for row in rows:
+        f = conn.execute("SELECT * FROM formals WHERE id=?", (row["id"],)).fetchone()
+        start = parse_local(f["dt"])
+        if start.date() != now.date():
+            # Reminder/review are strictly day-of; mark long-past formals done
+            # so we stop scanning them.
+            if start < now - timedelta(days=1):
+                conn.execute("UPDATE formals SET reminder_sent=1, review_sent=1 "
+                             "WHERE id=?", (f["id"],))
+            continue
+        nine = start.replace(hour=9, minute=0, second=0, microsecond=0)
+        nine_pm = start.replace(hour=21, minute=0, second=0, microsecond=0)
+        if not f["reminder_sent"] and nine <= now < start:
+            with immediate(conn):
+                fresh = conn.execute("SELECT reminder_sent FROM formals WHERE id=?",
+                                     (f["id"],)).fetchone()
+                if fresh["reminder_sent"]:
+                    continue
+                conn.execute("UPDATE formals SET reminder_sent=1 WHERE id=?", (f["id"],))
+            send_reminder(f, attendee_emails(conn, f["id"]))
+            fired.append(("reminder", f["id"]))
+        if not f["review_sent"] and now >= max(nine_pm, start):
+            with immediate(conn):
+                fresh = conn.execute("SELECT review_sent FROM formals WHERE id=?",
+                                     (f["id"],)).fetchone()
+                if fresh["review_sent"]:
+                    continue
+                conn.execute("UPDATE formals SET review_sent=1 WHERE id=?", (f["id"],))
+            send_review(f, attendee_emails(conn, f["id"]))
+            fired.append(("review", f["id"]))
+    return fired
 
 
 # ------------------------------------------------------------------ release worker step

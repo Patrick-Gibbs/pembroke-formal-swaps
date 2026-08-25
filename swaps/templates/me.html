@@ -19,6 +19,8 @@
         <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
         <button class="small danger">Cancel</button>
       </form>
+      {% elif past[a['id']] %}
+      <a class="btn" style="font-size:.8rem;padding:.15rem .5rem" href="/review/{{ a['formal_id'] }}">Rate it ★</a>
       {% elif a['status'] == 'active' %}
       <span class="muted">within 24h — can't cancel</span>
       {% endif %}

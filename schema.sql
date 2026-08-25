@@ -22,6 +22,10 @@ CREATE TABLE IF NOT EXISTS formals (
     ballot_open TEXT NOT NULL,      -- 'YYYY-MM-DD HH:MM' local
     ballot_close TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'open',  -- open | allocated | cancelled
+    location TEXT NOT NULL DEFAULT '',      -- meeting point / address for calendar
+    instructions TEXT NOT NULL DEFAULT '',  -- dress code, payment, arrival time...
+    reminder_sent INTEGER NOT NULL DEFAULT 0,   -- 9am day-of email done
+    review_sent INTEGER NOT NULL DEFAULT 0,     -- 9pm review request done
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -89,6 +93,18 @@ CREATE TABLE IF NOT EXISTS audit_log (
     actor TEXT NOT NULL,             -- 'admin' or user email
     action TEXT NOT NULL,
     detail TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS reviews (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    formal_id INTEGER NOT NULL REFERENCES formals(id),
+    course_stars INTEGER NOT NULL,   -- 0-3, one per good course
+    vibe_stars INTEGER NOT NULL,     -- 0-2, hosts + college
+    review TEXT NOT NULL DEFAULT '',
+    photo TEXT NOT NULL DEFAULT '',  -- filename under data/photos
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(user_id, formal_id)
 );
 
 CREATE TABLE IF NOT EXISTS ballot_groups (

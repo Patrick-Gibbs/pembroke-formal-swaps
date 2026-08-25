@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Reviews — Pembroke Formal Swaps{% endblock %}
+{% block content %}
+<h1>Formal reviews</h1>
+{% if stats %}
+<div class="card">
+  <h3>College ratings</h3>
+  <table>
+    <tr><th>College</th><th>Rating (out of 5)</th><th>Reviews</th></tr>
+    {% for college, mean, sd, n in stats %}
+    <tr>
+      <td>{{ college }}</td>
+      <td><b>{{ '%.1f'|format(mean) }} ± {{ '%.1f'|format(sd) }}</b>
+          <span style="color:#c9a227">{% for i in range(mean|round|int) %}★{% endfor %}</span></td>
+      <td>{{ n }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="muted">Mean ± standard deviation of star ratings. 3 stars for the
+  courses, 2 for hosts &amp; atmosphere.</p>
+</div>
+{% endif %}
+
+{% for r in rows %}
+<div class="card">
+  <p><b>{{ r['host_college'] }}</b> — {{ r['dt'][:10] }}
+  &nbsp;<span style="color:#c9a227">{% for i in range(r['course_stars'] + r['vibe_stars']) %}★{% endfor %}</span><span style="color:#c8cdd3">{% for i in range(5 - r['course_stars'] - r['vibe_stars']) %}★{% endfor %}</span>
+  <span class="muted">({{ r['course_stars'] }}/3 courses, {{ r['vibe_stars'] }}/2 vibes)
+  — {{ r['first_name'] }} {{ r['last_name'][:1] }}.</span></p>
+  {% if r['review'] %}<p>{{ r['review'] }}</p>{% endif %}
+  {% if r['photo'] %}<p><img src="/photos/{{ r['photo'] }}" alt="Photo from the {{ r['host_college'] }} formal" style="max-width:100%;max-height:320px;border-radius:8px"></p>{% endif %}
+</div>
+{% else %}
+<p>No reviews yet — attendees get a review link the evening of each formal.</p>
+{% endfor %}
+{% endblock %}
