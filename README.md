@@ -127,6 +127,18 @@ formals on the same evening — the admin roster is the place to catch that.
    create a hidden hold that opens at a random point within an hour; the
    background worker then emails that formal's subscribers a claim link.
    Claims are atomic — the last seat can only go to one person.
+7. **Automatic emails around each formal** (worker thread, no cron needed):
+   running the allocation emails every winner their formals with **.ics
+   calendar invitations** attached (fill in the formal's *Location* and
+   *Instructions* fields in admin first — they go into the invite), and every
+   entrant who got nothing a courteous miss note. At **09:00 UK** on the day
+   of a formal all attendees get a reminder (with the invite re-attached);
+   at **21:00** (or after the formal starts, whichever is later) they get a
+   link to rate the night.
+8. **Reviews** (`/reviews`, public): attendees rate out of 5 — one star per
+   good course (3) plus hosts & atmosphere (2) — with optional text and a
+   photo (stored in `data/photos/`). The page shows every review and each
+   college's mean ± standard deviation.
 
 ## Backups & restore
 
