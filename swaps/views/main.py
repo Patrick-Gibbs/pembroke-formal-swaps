@@ -99,13 +99,21 @@ def rank():
                 ids.append(int(tok))
         valid = {f["id"] for f in open_formals}
         ids = [i for i in ids if i in valid]
+        try:
+            max_places = min(3, max(1, int(request.form.get("max_places", "3"))))
+        except ValueError:
+            max_places = 3
         db.execute("DELETE FROM preferences WHERE user_id=? AND term=?",
                    (user["id"], term))
         for rank_no, fid in enumerate(ids, start=1):
             db.execute("INSERT INTO preferences(user_id, formal_id, rank, term) "
                        "VALUES (?,?,?,?)", (user["id"], fid, rank_no, term))
-        flash(f"Saved — you ranked {len(ids)} formal(s). You can edit until the "
-              "ballot closes.", "ok")
+        db.execute("INSERT INTO ballot_caps(user_id, term, max_places) "
+                   "VALUES (?,?,?) ON CONFLICT(user_id, term) "
+                   "DO UPDATE SET max_places=excluded.max_places",
+                   (user["id"], term, max_places))
+        flash(f"Saved — you ranked {len(ids)} formal(s), happy with up to "
+              f"{max_places}. You can edit until the ballot closes.", "ok")
         return redirect(url_for("main.rank"))
 
     prefs = db.execute(
@@ -115,8 +123,11 @@ def rank():
     by_id = {f["id"]: f for f in open_formals}
     ranked = [by_id[i] for i in ranked_ids if i in by_id]
     unranked = [f for f in open_formals if f["id"] not in ranked_ids]
+    cap_row = db.execute("SELECT max_places FROM ballot_caps WHERE user_id=? "
+                         "AND term=?", (user["id"], term)).fetchone()
     return render_template("rank.html", ranked=ranked, unranked=unranked, term=term,
                            is_group_member=False, leader=None, group_size=group_size,
+                           max_places=cap_row["max_places"] if cap_row else 3,
                            ballot_closes=get_setting(db, "term_ballot_close"))
 
 

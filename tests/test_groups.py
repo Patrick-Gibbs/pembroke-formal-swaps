@@ -103,3 +103,33 @@ def test_db_run_allocation_group_shares_outcome(db):
     # solo user 4: formal 1 is full, cascades to formal 2
     assert by_user[4] == 2
     assert placed == 4
+
+
+def test_caps_limit_extra_places():
+    # Plenty of capacity: without caps both users would get 3 formals each.
+    formals = {1: 2, 2: 2, 3: 2}
+    prefs = {"u:1": [1, 2, 3], "u:2": [1, 2, 3]}
+    from collections import Counter
+    a, _ = run_ballot(formals, prefs, "cap", caps={"u:1": 1, "u:2": 3})
+    got = Counter(u for u, _, _ in a)
+    assert got["u:1"] == 1 and got["u:2"] == 3
+
+
+def test_group_cap_is_min_of_members(db):
+    for uid in (1, 2, 3):
+        add_user(db, uid)
+    add_formal(db, 1, slots=4, term="T1")
+    add_formal(db, 2, slots=4, term="T1")
+    db.execute("UPDATE formals SET status='open'")
+    db.execute("INSERT INTO ballot_groups(id, term, leader_user_id) VALUES (1,'T1',1)")
+    for uid in (1, 2):
+        db.execute("INSERT INTO ballot_group_members(group_id, user_id, status) "
+                   "VALUES (1, ?, 'accepted')", (uid,))
+    # member 2 is only happy with 1 swap -> group capped at 1
+    db.execute("INSERT INTO ballot_caps(user_id, term, max_places) VALUES (2,'T1',1)")
+    for rank, fid in enumerate([1, 2], 1):
+        db.execute("INSERT INTO preferences(user_id, formal_id, rank, term) "
+                   "VALUES (1, ?, ?, 'T1')", (fid, rank))
+    _r, _s, placed, _l, new_allocs = run_allocation(db, "T1", seed="capgrp")
+    assert placed == 2  # the pair got exactly ONE formal (2 seats), not two
+    assert {f for _, f in new_allocs} == {1}

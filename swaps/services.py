@@ -90,11 +90,29 @@ def run_allocation(conn, term, seed=None, actor="admin"):
             "SELECT user_id, formal_id FROM allocations WHERE status='active'").fetchall()
         held_set = {(h["user_id"], h["formal_id"]) for h in held}
 
+        # Personal caps: "max swaps I'm happy to be assigned" (1-3, default 3),
+        # counting places already held this term. A group is limited by its
+        # most-constrained accepted member.
+        cap_rows = {r["user_id"]: r["max_places"] for r in conn.execute(
+            "SELECT user_id, max_places FROM ballot_caps WHERE term=?",
+            (term,)).fetchall()}
+        held_count = {}
+        for r in conn.execute(
+                "SELECT a.user_id, COUNT(*) n FROM allocations a "
+                "JOIN formals f ON f.id=a.formal_id "
+                "WHERE a.status='active' AND f.term=? GROUP BY a.user_id",
+                (term,)).fetchall():
+            held_count[r["user_id"]] = r["n"]
+
+        def remaining_cap(user_id):
+            return max(0, cap_rows.get(user_id, 3) - held_count.get(user_id, 0))
+
         # Balloting units: a group (accepted members, leader's ranking, block
         # size = member count) or a solo entrant. A formal any member already
         # attends is dropped from the unit's list, and nobody may get a second
         # seat at a formal they already hold.
         unit_prefs, unit_sizes, unit_members = {}, {}, {}
+        unit_caps = {}
         grouped_users = set()
         for g in conn.execute("SELECT id, leader_user_id FROM ballot_groups "
                               "WHERE term=?", (term,)).fetchall():
@@ -111,6 +129,7 @@ def run_allocation(conn, term, seed=None, actor="admin"):
                 unit_prefs[uid] = plist
                 unit_sizes[uid] = len(members)
                 unit_members[uid] = members
+                unit_caps[uid] = min(remaining_cap(m) for m in members)
         for u, plist in raw_prefs.items():
             if u in grouped_users:
                 continue  # a group member's personal ranking is inert
@@ -119,8 +138,10 @@ def run_allocation(conn, term, seed=None, actor="admin"):
                 unit_prefs[f"u:{u}"] = plist
                 unit_sizes[f"u:{u}"] = 1
                 unit_members[f"u:{u}"] = [u]
+                unit_caps[f"u:{u}"] = remaining_cap(u)
 
-        assignments, log = run_ballot(capacity, unit_prefs, seed, unit_sizes)
+        assignments, log = run_ballot(capacity, unit_prefs, seed, unit_sizes,
+                                      unit_caps)
 
         new_allocs = []  # (user_id, formal_id) inserted by this run
         for uid, fid, _rnd in assignments:

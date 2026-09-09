@@ -28,12 +28,14 @@ import random
 from collections import defaultdict
 
 
-def run_ballot(formals, preferences, seed, sizes=None):
+def run_ballot(formals, preferences, seed, sizes=None, caps=None):
     """Pure, deterministic allocation.
 
     formals: {formal_id: free_seats}
     preferences: {unit_id: [formal_id, ...] in rank order}
     sizes: {unit_id: seats_needed}, default 1 each
+    caps: {unit_id: max formals this unit may win in this run}, default
+          unlimited — a unit stops bidding once it holds `cap` formals.
     seed: str/int recorded by the caller.
 
     Returns (assignments, log): assignments is [(unit_id, formal_id, round_no)]
@@ -41,9 +43,14 @@ def run_ballot(formals, preferences, seed, sizes=None):
     """
     rng = random.Random(str(seed))
     sizes = sizes or {}
+    caps = caps or {}
 
     def size(u):
         return max(1, int(sizes.get(u, 1)))
+
+    def capped_out(u):
+        cap = caps.get(u)
+        return cap is not None and len(holdings[u]) >= cap
 
     remaining = {fid: max(0, int(cap)) for fid, cap in formals.items()}
     prefs = {uid: [f for f in plist if f in remaining]
@@ -60,7 +67,7 @@ def run_ballot(formals, preferences, seed, sizes=None):
         while True:
             bids = defaultdict(list)  # formal_id -> [unit_id] in deterministic order
             for uid in prefs:
-                if uid in resolved or uid in exhausted:
+                if uid in resolved or uid in exhausted or capped_out(uid):
                     continue
                 pick = next((f for f in prefs[uid]
                              if remaining[f] >= size(uid) and f not in holdings[uid]),

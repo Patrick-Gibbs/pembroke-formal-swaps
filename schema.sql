@@ -108,6 +108,13 @@ CREATE TABLE IF NOT EXISTS reviews (
     UNIQUE(user_id, formal_id)
 );
 
+CREATE TABLE IF NOT EXISTS ballot_caps (
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    term TEXT NOT NULL,
+    max_places INTEGER NOT NULL DEFAULT 3,   -- 1-3, "happy to be assigned"
+    UNIQUE(user_id, term)
+);
+
 CREATE TABLE IF NOT EXISTS ballot_groups (
     id INTEGER PRIMARY KEY,
     term TEXT NOT NULL,
