@@ -27,6 +27,7 @@
   <a class="btn ghost" href="/admin/users">Users ({{ users_n }})</a>
   <a class="btn ghost" href="/admin/subscriptions">Subscriptions &amp; releases</a>
   <a class="btn ghost" href="/admin/audit">Audit log</a>
+  <a class="btn ghost" href="/admin/emails">Email log</a>
   <a class="btn ghost" href="/admin/export.csv{% if term %}?term={{ term|urlencode }}{% endif %}">Export all rosters (CSV)</a>
   <button class="btn ghost" type="button" onclick="copyTable('copy-all-rosters', this)">📋 Copy all rosters</button>
   {% if results_published %}

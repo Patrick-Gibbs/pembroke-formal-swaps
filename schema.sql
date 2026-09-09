@@ -152,6 +152,15 @@ CREATE TABLE IF NOT EXISTS incoming_participants (
     notes TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS email_log (
+    id INTEGER PRIMARY KEY,
+    at TEXT NOT NULL DEFAULT (datetime('now')),
+    recipient TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    ok INTEGER NOT NULL,             -- 1 = accepted by Resend (or dev mode)
+    error TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL

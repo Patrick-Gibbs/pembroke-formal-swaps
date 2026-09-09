@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Email log — Admin{% endblock %}
+{% block content %}
+<h1>Email log</h1>
+<p class="muted">Last 7 days: <b>{{ total7 }}</b> sent,
+<b style="{% if failed7 %}color:var(--err){% endif %}">{{ failed7 }} failed</b>.
+“OK” means Resend accepted the email; for actual inbox delivery
+(bounces, spam) check the <a href="https://resend.com/emails">Resend dashboard</a>.
+Latest 300 attempts shown.</p>
+<table>
+  <tr><th>When (UTC)</th><th>To</th><th>Subject</th><th>Status</th></tr>
+  {% for r in rows %}
+  <tr{% if not r['ok'] %} style="background:#fdecea"{% endif %}>
+    <td style="white-space:nowrap">{{ r['at'] }}</td>
+    <td>{{ r['recipient'] }}</td>
+    <td>{{ r['subject'] }}</td>
+    <td>{% if r['ok'] %}✓ {{ r['error'] or 'OK' }}{% else %}<b style="color:var(--err)">✗ {{ r['error'] }}</b>{% endif %}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="4">No emails logged yet (logging starts from today's update).</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

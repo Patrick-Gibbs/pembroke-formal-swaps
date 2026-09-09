@@ -11,14 +11,31 @@ log = logging.getLogger("swaps.email")
 RESEND_URL = "https://api.resend.com/emails"
 
 
+def _record(to, subject, ok, error=""):
+    """Append to the email_log table. Uses its own connection because sends
+    often happen on background threads outside any request. Never raises."""
+    try:
+        from .db import connect
+        conn = connect()
+        try:
+            conn.execute(
+                "INSERT INTO email_log(recipient, subject, ok, error) "
+                "VALUES (?,?,?,?)", (to, subject[:300], int(ok), error[:500]))
+        finally:
+            conn.close()
+    except Exception:
+        log.exception("could not write email_log entry")
+
+
 def send(to, subject, html, attachments=None):
     """Send one email. attachments: [(filename, bytes)]. Returns True on
-    success. Never raises."""
+    success. Never raises. Every attempt is recorded in email_log."""
     if config.EMAIL_MODE != "live":
         names = [a[0] for a in (attachments or [])]
         log.info("[dev email] to=%s subject=%r attachments=%s", to, subject, names)
         print(f"--- DEV EMAIL to={to} subject={subject!r} attachments={names} ---"
               f"\n{html}\n---", flush=True)
+        _record(to, subject, True, "dev mode — not actually sent")
         return True
     payload = {"from": config.MAIL_FROM, "to": [to], "subject": subject, "html": html}
     if attachments:
@@ -33,10 +50,13 @@ def send(to, subject, html, attachments=None):
         )
         if r.status_code // 100 != 2:
             log.error("Resend error %s for %s: %s", r.status_code, to, r.text[:500])
+            _record(to, subject, False, f"HTTP {r.status_code}: {r.text[:300]}")
             return False
+        _record(to, subject, True)
         return True
     except requests.RequestException as e:
         log.error("Resend request failed for %s: %s", to, e)
+        _record(to, subject, False, str(e))
         return False
 
 

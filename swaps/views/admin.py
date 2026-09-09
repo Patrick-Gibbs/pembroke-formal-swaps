@@ -626,6 +626,19 @@ def subscriptions():
     return render_template("admin/subscriptions.html", rows=rows, releases=releases)
 
 
+@bp.route("/emails")
+@admin_required
+def email_log():
+    db = get_db()
+    rows = db.execute(
+        "SELECT * FROM email_log ORDER BY id DESC LIMIT 300").fetchall()
+    week = db.execute(
+        "SELECT COUNT(*) total, SUM(1 - ok) failed FROM email_log "
+        "WHERE at > datetime('now', '-7 days')").fetchone()
+    return render_template("admin/emails.html", rows=rows,
+                           total7=week["total"], failed7=week["failed"] or 0)
+
+
 @bp.route("/audit")
 @admin_required
 def audit_view():
