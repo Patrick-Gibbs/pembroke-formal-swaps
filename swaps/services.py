@@ -90,22 +90,17 @@ def run_allocation(conn, term, seed=None, actor="admin"):
             "SELECT user_id, formal_id FROM allocations WHERE status='active'").fetchall()
         held_set = {(h["user_id"], h["formal_id"]) for h in held}
 
-        # Personal caps: "max swaps I'm happy to be assigned" (1-3, default 3),
-        # counting places already held this term. A group is limited by its
-        # most-constrained accepted member.
+        # Personal caps: "max swaps I'm happy to be assigned" (1-3, default 3).
+        # Applies to the ballot ONLY: it limits how many formals this run can
+        # hand someone, but never blocks later claims of released slots (a
+        # claim is a deliberate act) and ignores places gained outside the
+        # ballot. A group is limited by its most-constrained accepted member.
         cap_rows = {r["user_id"]: r["max_places"] for r in conn.execute(
             "SELECT user_id, max_places FROM ballot_caps WHERE term=?",
             (term,)).fetchall()}
-        held_count = {}
-        for r in conn.execute(
-                "SELECT a.user_id, COUNT(*) n FROM allocations a "
-                "JOIN formals f ON f.id=a.formal_id "
-                "WHERE a.status='active' AND f.term=? GROUP BY a.user_id",
-                (term,)).fetchall():
-            held_count[r["user_id"]] = r["n"]
 
         def remaining_cap(user_id):
-            return max(0, cap_rows.get(user_id, 3) - held_count.get(user_id, 0))
+            return cap_rows.get(user_id, 3)
 
         # Balloting units: a group (accepted members, leader's ranking, block
         # size = member count) or a solo entrant. A formal any member already
