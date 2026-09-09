@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Preview rosters — Admin{% endblock %}
+{% block content %}
+<h1>Roster preview — {{ term }}</h1>
+<p>
+  {% if not results_published %}
+  <form method="post" action="/admin/publish" class="inline"
+        onsubmit="return confirm('Publish results? Everyone gets their result email (with calendar invites) and the assigned swaps page goes public.')">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <button>📣 Publish results</button>
+  </form>
+  {% else %}<span class="muted">Results are published.</span>{% endif %}
+  <a class="btn ghost" href="/admin/">Back to dashboard</a>
+</p>
+{% if not results_published %}
+<p class="muted">DRAFT — nothing below is public yet and no emails have gone out.
+“new” marks allocations that will be emailed on publish.</p>
+{% endif %}
+
+{% for f in formals %}
+{% set rows = rosters[f['id']] %}
+<div class="card">
+  <h2>{{ f['host_college'] }} — {{ f['dt'] }}</h2>
+  <p class="muted">{{ rows|length }}/{{ f['slots'] }} places filled
+    {% if rows|length < f['slots'] %}— <b>{{ f['slots'] - rows|length }} unfilled</b>{% endif %}</p>
+  {% if rows %}
+  <table>
+    <tr><th>#</th><th>Name</th><th>Dietary</th><th>Via</th></tr>
+    {% for r in rows %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td>{{ r['first_name'] }} {{ r['last_name'] }}
+          {% if not r['notified'] %}<b style="color:var(--ok)">(new)</b>{% endif %}</td>
+      <td>{{ ", ".join((r['dietary_flags'].split(',') if r['dietary_flags'] else []) + ([r['dietary_other']] if r['dietary_other'] else [])) }}</td>
+      <td>{{ r['source'] }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<p>Nobody assigned.</p>{% endif %}
+</div>
+{% else %}
+<p>No formals for this term.</p>
+{% endfor %}
+
+<div class="card">
+  <h2>Entered the ballot, got nothing ({{ unseated|length }})</h2>
+  {% if unseated %}
+  <table>
+    <tr><th>Name</th><th>Email</th></tr>
+    {% for u in unseated %}
+    <tr><td>{{ u['first_name'] }} {{ u['last_name'] }}</td><td>{{ u['email'] }}</td></tr>
+    {% endfor %}
+  </table>
+  <p class="muted">These members get the “no place this time” email on first
+  publish. Check nobody is here by mistake (e.g. everything they ranked filled).</p>
+  {% else %}<p>Everyone who entered has at least one place. 🎉</p>{% endif %}
+</div>
+{% endblock %}

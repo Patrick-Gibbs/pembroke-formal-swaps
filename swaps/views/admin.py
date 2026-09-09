@@ -189,6 +189,45 @@ def allocate():
     return render_template("admin/allocate.html", term=term, n_prefs=n_prefs)
 
 
+@bp.route("/preview")
+@admin_required
+def preview():
+    """One-page sanity check before publishing: every formal for the current
+    term (date order) with its attendees, plus entrants left with nothing."""
+    db = get_db()
+    term = get_setting(db, "current_term")
+    formals = db.execute(
+        "SELECT * FROM formals WHERE term=? AND status IN ('open','allocated') "
+        "ORDER BY dt", (term,)).fetchall()
+    rosters = {}
+    for f in formals:
+        rosters[f["id"]] = db.execute(
+            "SELECT u.first_name, u.last_name, u.dietary_flags, u.dietary_other, "
+            "a.source, a.notified FROM allocations a JOIN users u ON u.id=a.user_id "
+            "WHERE a.formal_id=? AND a.status='active' "
+            "ORDER BY u.last_name, u.first_name", (f["id"],)).fetchall()
+    entrants = {r["id"]: r for r in db.execute(
+        "SELECT DISTINCT u.* FROM users u JOIN preferences p ON p.user_id=u.id "
+        "WHERE p.term=? AND u.email_verified=1", (term,)).fetchall()}
+    for r in db.execute(
+            "SELECT DISTINCT u.* FROM users u "
+            "JOIN ballot_group_members m ON m.user_id=u.id AND m.status='accepted' "
+            "JOIN ballot_groups g ON g.id=m.group_id "
+            "JOIN preferences p ON p.user_id=g.leader_user_id AND p.term=g.term "
+            "WHERE g.term=? AND u.email_verified=1", (term,)).fetchall():
+        entrants[r["id"]] = r
+    seated_ids = {r["user_id"] for r in db.execute(
+        "SELECT DISTINCT a.user_id FROM allocations a "
+        "JOIN formals f ON f.id=a.formal_id "
+        "WHERE a.status='active' AND f.term=?", (term,)).fetchall()}
+    unseated = sorted((u for uid, u in entrants.items() if uid not in seated_ids),
+                      key=lambda u: (u["last_name"], u["first_name"]))
+    return render_template(
+        "admin/preview.html", term=term, formals=formals, rosters=rosters,
+        unseated=unseated,
+        results_published=get_setting(db, "results_published", "1") == "1")
+
+
 @bp.route("/publish", methods=["POST"])
 @admin_required
 def publish():
