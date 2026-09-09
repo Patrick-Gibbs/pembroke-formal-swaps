@@ -242,22 +242,17 @@ def preview():
         results_published=get_setting(db, "results_published", "1") == "1")
 
 
-@bp.route("/publish", methods=["POST"])
-@admin_required
-def publish():
-    """Make results public and email every not-yet-notified winner their
-    formals (+ calendar invites); entrants left with nothing get a miss note."""
-    import threading
-
-    from .. import emailer
+def _result_batches(db, term, only_unnotified):
+    """(winners, missed, alloc_ids): winners = [(email, formals, ics_files)]
+    grouped per user; missed = entrant emails with no active place this term."""
     from ..ics import formal_ics
 
-    db = get_db()
-    term = get_setting(db, "current_term")
-    rows = db.execute(
-        "SELECT a.id, a.user_id, a.formal_id FROM allocations a "
-        "JOIN formals f ON f.id=a.formal_id "
-        "WHERE a.status='active' AND a.notified=0 AND f.term=?", (term,)).fetchall()
+    q = ("SELECT a.id, a.user_id, a.formal_id FROM allocations a "
+         "JOIN formals f ON f.id=a.formal_id "
+         "WHERE a.status='active' AND f.term=?")
+    if only_unnotified:
+        q += " AND a.notified=0"
+    rows = db.execute(q, (term,)).fetchall()
     by_user = {}
     for r in rows:
         by_user.setdefault(r["user_id"], []).append(r["formal_id"])
@@ -273,32 +268,29 @@ def publish():
         ics = [(f"{f['host_college']}-formal.ics", formal_ics(f).encode())
                for f in formals]
         winners.append((u["email"], formals, ics))
-    if rows:
-        db.execute("UPDATE allocations SET notified=1 WHERE id IN (%s)"
-                   % ",".join("?" * len(rows)), [r["id"] for r in rows])
 
-    first_publish = get_setting(db, "results_published") != "1"
-    missed = []
-    if first_publish:
-        # Entered (own prefs, or accepted member of a group whose leader
-        # entered) but hold no active place this term -> miss email.
-        entrants = {r["email"] for r in db.execute(
-            "SELECT DISTINCT u.email FROM users u JOIN preferences p ON p.user_id=u.id "
-            "WHERE p.term=? AND u.email_verified=1", (term,)).fetchall()}
-        entrants |= {r["email"] for r in db.execute(
-            "SELECT DISTINCT u.email FROM users u "
-            "JOIN ballot_group_members m ON m.user_id=u.id AND m.status='accepted' "
-            "JOIN ballot_groups g ON g.id=m.group_id "
-            "JOIN preferences p ON p.user_id=g.leader_user_id AND p.term=g.term "
-            "WHERE g.term=? AND u.email_verified=1", (term,)).fetchall()}
-        seated = {r["email"] for r in db.execute(
-            "SELECT DISTINCT u.email FROM users u JOIN allocations a ON a.user_id=u.id "
-            "JOIN formals f ON f.id=a.formal_id "
-            "WHERE a.status='active' AND f.term=?", (term,)).fetchall()}
-        missed = sorted(entrants - seated)
-    set_setting(db, "results_published", "1")
-    audit(db, "admin", "publish_results",
-          f"term={term} winners={len(winners)} missed={len(missed)}")
+    # Entered (own prefs, or accepted member of a group whose leader entered)
+    # but hold no active place this term -> miss email.
+    entrants = {r["email"] for r in db.execute(
+        "SELECT DISTINCT u.email FROM users u JOIN preferences p ON p.user_id=u.id "
+        "WHERE p.term=? AND u.email_verified=1", (term,)).fetchall()}
+    entrants |= {r["email"] for r in db.execute(
+        "SELECT DISTINCT u.email FROM users u "
+        "JOIN ballot_group_members m ON m.user_id=u.id AND m.status='accepted' "
+        "JOIN ballot_groups g ON g.id=m.group_id "
+        "JOIN preferences p ON p.user_id=g.leader_user_id AND p.term=g.term "
+        "WHERE g.term=? AND u.email_verified=1", (term,)).fetchall()}
+    seated = {r["email"] for r in db.execute(
+        "SELECT DISTINCT u.email FROM users u JOIN allocations a ON a.user_id=u.id "
+        "JOIN formals f ON f.id=a.formal_id "
+        "WHERE a.status='active' AND f.term=?", (term,)).fetchall()}
+    return winners, sorted(entrants - seated), [r["id"] for r in rows]
+
+
+def _deliver_results(winners, missed, term):
+    import threading
+
+    from .. import emailer
 
     def deliver():
         for email, formals, ics in winners:
@@ -307,9 +299,50 @@ def publish():
             emailer.no_place_email(email, term)
 
     threading.Thread(target=deliver, daemon=True).start()
+
+
+@bp.route("/publish", methods=["POST"])
+@admin_required
+def publish():
+    """Make results public and email every not-yet-notified winner their
+    formals (+ calendar invites); entrants left with nothing get a miss note."""
+    db = get_db()
+    term = get_setting(db, "current_term")
+    winners, missed, alloc_ids = _result_batches(db, term, only_unnotified=True)
+    first_publish = get_setting(db, "results_published") != "1"
+    if not first_publish:
+        missed = []  # only nag the unlucky once, on first publish
+    if alloc_ids:
+        db.execute("UPDATE allocations SET notified=1 WHERE id IN (%s)"
+                   % ",".join("?" * len(alloc_ids)), alloc_ids)
+    set_setting(db, "results_published", "1")
+    audit(db, "admin", "publish_results",
+          f"term={term} winners={len(winners)} missed={len(missed)}")
+    _deliver_results(winners, missed, term)
     flash(f"Published. Result emails queued: {len(winners)} winner(s)"
           + (f", {len(missed)} without a place" if missed else "")
           + ". The assigned swaps page is now public.", "ok")
+    return redirect(url_for("admin.dashboard"))
+
+
+@bp.route("/republish", methods=["POST"])
+@admin_required
+def republish():
+    """Resend result emails to EVERYONE for the current term: every member
+    with active places gets their full result again (+ calendar invites),
+    every entrant without a place gets the miss note again."""
+    db = get_db()
+    term = get_setting(db, "current_term")
+    winners, missed, alloc_ids = _result_batches(db, term, only_unnotified=False)
+    if alloc_ids:
+        db.execute("UPDATE allocations SET notified=1 WHERE id IN (%s)"
+                   % ",".join("?" * len(alloc_ids)), alloc_ids)
+    set_setting(db, "results_published", "1")
+    audit(db, "admin", "republish_results",
+          f"term={term} winners={len(winners)} missed={len(missed)}")
+    _deliver_results(winners, missed, term)
+    flash(f"Republished: result emails re-queued to {len(winners)} winner(s) "
+          f"and {len(missed)} entrant(s) without a place.", "ok")
     return redirect(url_for("admin.dashboard"))
 
 

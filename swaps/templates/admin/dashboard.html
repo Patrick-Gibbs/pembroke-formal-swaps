@@ -29,6 +29,13 @@
   <a class="btn ghost" href="/admin/audit">Audit log</a>
   <a class="btn ghost" href="/admin/export.csv{% if term %}?term={{ term|urlencode }}{% endif %}">Export all rosters (CSV)</a>
   <button class="btn ghost" type="button" onclick="copyTable('copy-all-rosters', this)">📋 Copy all rosters</button>
+  {% if results_published %}
+  <form method="post" action="/admin/republish" class="inline"
+        onsubmit="return confirm('Resend ballot result emails to EVERYONE for this term? All winners get their full results (with calendar invites) again, and entrants without a place get the miss note again.')">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <button class="ghost">↻ Republish results (resend all emails)</button>
+  </form>
+  {% endif %}
   <form class="inline" method="post" action="/admin/logout">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <button class="ghost">Log out</button>
