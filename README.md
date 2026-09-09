@@ -1,11 +1,4 @@
 # Formal Swaps
-
-Created by **Patrick Gibbs**. Free to reuse under the
-[MIT license with attribution](LICENSE): any public site built on this code
-must credit "Patrick Gibbs" and link to
-[this repository](https://github.com/Patrick-Gibbs/pembroke-formal-swaps)
-somewhere discoverable (e.g. the footer).
-
 A complete, self-hosted web app for running **formal swaps** — organising your
 college's members to attend formal dinners at other colleges, and tracking the
 other colleges that visit you. Built for Pembroke College, Cambridge
@@ -17,6 +10,12 @@ can deploy their own copy on a cheap VM.
 · [Resend](https://resend.com) for all outbound email. No Postgres, no Redis,
 no Node build chain — one small process plus SQLite, comfortable on a 1 vCPU /
 2 GB VM.
+
+Created by Patrick Gibbs. Free to reuse under the
+[MIT license with attribution](LICENSE): any public site built on this code
+must credit "Patrick Gibbs" and link to
+[this repository](https://github.com/Patrick-Gibbs/pembroke-formal-swaps)
+somewhere discoverable (e.g. the footer).
 
 ---
 
