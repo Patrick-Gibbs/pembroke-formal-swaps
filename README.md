@@ -475,6 +475,16 @@ admin configuration — no code edits.
 
 ---
 
+## 10. License
+
+MIT with one extra condition (see [LICENSE](LICENSE)): you're free to use,
+modify, and run this for your own college, but any public site built on it
+must **credit "Patrick Gibbs" and link to
+[this repository](https://github.com/Patrick-Gibbs/pembroke-formal-swaps)**
+somewhere discoverable (footer or about page is fine).
+
+---
+
 *Built with Flask + SQLite on purpose: one process, one file of state, no
 external services beyond DNS + Resend. If your college outgrows it, the
 allocation engine (`swaps/allocation.py`) is a pure function you can lift
