@@ -26,6 +26,7 @@
   <a class="btn ghost" href="/admin/users">Users ({{ users_n }})</a>
   <a class="btn ghost" href="/admin/subscriptions">Subscriptions &amp; releases</a>
   <a class="btn ghost" href="/admin/audit">Audit log</a>
+  <a class="btn ghost" href="/admin/export.csv{% if term %}?term={{ term|urlencode }}{% endif %}">Export all rosters (CSV)</a>
   <form class="inline" method="post" action="/admin/logout">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <button class="ghost">Log out</button>

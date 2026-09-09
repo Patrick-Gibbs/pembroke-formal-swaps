@@ -2,10 +2,27 @@
 {% block content %}
 <h1>Roster — {{ f['host_college'] }} ({{ f['dt'] }})</h1>
 <p>
+  <button class="btn" type="button" onclick="copyTable('copy-roster', this)">📋 Copy for email</button>
   <a class="btn" href="?csv=1">Export CSV (active attendees)</a>
   <a class="btn ghost" href="/admin/">Back</a>
   &nbsp; Free seats now: <b>{{ free }}</b> / {{ f['slots'] }}
 </p>
+
+<div id="copy-roster" style="display:none">
+  <p><b>{{ f['host_college'] }} formal — {{ f['dt'] }}{% if f['price'] %} — {{ f['price'] }}{% endif %}
+  — {{ rows|selectattr('status', 'equalto', 'active')|list|length }} attendee(s)</b></p>
+  <table border="1" cellpadding="6" style="border-collapse:collapse;border:1px solid #999;font-family:Arial,sans-serif;font-size:13px">
+    <tr style="background:#eef3f8"><th>First name</th><th>Last name</th><th>Email</th><th>Dietary requirements</th></tr>
+    {% for r in rows if r['status'] == 'active' %}
+    <tr>
+      <td>{{ r['first_name'] }}</td>
+      <td>{{ r['last_name'] }}</td>
+      <td>{{ r['email'] }}</td>
+      <td>{{ ", ".join((r['dietary_flags'].split(',') if r['dietary_flags'] else []) + ([r['dietary_other']] if r['dietary_other'] else [])) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
 <table>
   <tr><th>Name</th><th>Email</th><th>Dietary</th><th>Status</th><th>Source</th><th></th></tr>
   {% for r in rows %}

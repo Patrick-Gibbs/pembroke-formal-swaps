@@ -2,7 +2,8 @@
 {% block title %}Incoming swaps — Admin{% endblock %}
 {% block content %}
 <h1>Incoming swaps (admin)</h1>
-<p><a class="btn ghost" href="/admin/">Back to dashboard</a>
+<p><a class="btn" href="/admin/incoming/export.csv">Export all (CSV)</a>
+   <a class="btn ghost" href="/admin/">Back to dashboard</a>
    <a class="btn ghost" href="/incoming">Public view</a></p>
 
 <div class="card">
@@ -50,7 +51,20 @@
     <button class="small danger">Delete swap</button>
   </form>
 
-  <h3>Guests ({{ participants[s['id']]|length }})</h3>
+  <h3>Guests ({{ participants[s['id']]|length }})
+    <button class="small ghost" type="button" onclick="copyTable('copy-swap-{{ s['id'] }}', this)">📋 Copy for email</button>
+  </h3>
+  <div id="copy-swap-{{ s['id'] }}" style="display:none">
+    <p><b>{{ s['guest_college'] }} @ Pembroke — {{ s['dt'] }} —
+    {{ participants[s['id']]|length }} guest(s)</b></p>
+    <table border="1" cellpadding="6" style="border-collapse:collapse;border:1px solid #999;font-family:Arial,sans-serif;font-size:13px">
+      <tr style="background:#eef3f8"><th>First name</th><th>Last name</th><th>Dietary requirements</th><th>Notes</th></tr>
+      {% for p in participants[s['id']] %}
+      <tr><td>{{ p['first_name'] }}</td><td>{{ p['last_name'] }}</td>
+          <td>{{ p['dietary'] }}</td><td>{{ p['notes'] }}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
   <table>
     <tr><th>First</th><th>Last</th><th>Dietary</th><th>Notes</th><th></th></tr>
     {% for p in participants[s['id']] %}

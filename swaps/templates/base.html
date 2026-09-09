@@ -36,6 +36,30 @@ button.ghost { background:#fff; color:var(--blue); border:1px solid var(--blue);
 .ranklist li .grow { flex:1; }
 footer { text-align:center; color:#8a97a5; font-size:.8rem; margin:2.5rem 0 1rem; }
 </style>
+<script>
+/* Copy a hidden table (by element id) to the clipboard as a real HTML table
+   (pastes formatted into Gmail/Outlook/Word) with tab-separated plain text as
+   fallback (pastes into Excel/Sheets with columns intact). */
+async function copyTable(id, btn) {
+  const el = document.getElementById(id);
+  const text = Array.from(el.querySelectorAll('tr')).map(tr =>
+    Array.from(tr.querySelectorAll('th,td')).map(c => c.textContent.trim()).join('\t')
+  ).join('\n');
+  const caption = el.querySelector('p');
+  const plain = (caption ? caption.textContent + '\n' : '') + text;
+  try {
+    await navigator.clipboard.write([new ClipboardItem({
+      'text/html': new Blob([el.innerHTML], {type: 'text/html'}),
+      'text/plain': new Blob([plain], {type: 'text/plain'})
+    })]);
+  } catch (e) {
+    await navigator.clipboard.writeText(plain);
+  }
+  const old = btn.textContent;
+  btn.textContent = '✓ Copied';
+  setTimeout(() => { btn.textContent = old; }, 1500);
+}
+</script>
 </head>
 <body>
 <header>

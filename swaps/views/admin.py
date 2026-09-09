@@ -360,6 +360,34 @@ def email_all(fid):
     return redirect(url_for("admin.roster", fid=fid))
 
 
+@bp.route("/export.csv")
+@admin_required
+def export_all():
+    """Every formal's active attendees (all terms unless ?term= given)."""
+    db = get_db()
+    term = request.args.get("term", "")
+    q = ("SELECT f.host_college, f.dt, f.price, f.term, u.first_name, u.last_name, "
+         "u.email, u.dietary_flags, u.dietary_other FROM allocations a "
+         "JOIN formals f ON f.id = a.formal_id JOIN users u ON u.id = a.user_id "
+         "WHERE a.status='active'")
+    args = []
+    if term:
+        q += " AND f.term=?"
+        args.append(term)
+    q += " ORDER BY f.dt, u.last_name, u.first_name"
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["formal", "date", "price", "term", "first_name", "last_name",
+                "email", "dietary"])
+    for r in db.execute(q, args).fetchall():
+        diet = ", ".join(filter(None, [r["dietary_flags"].replace(",", "; "),
+                                       r["dietary_other"]]))
+        w.writerow([r["host_college"], r["dt"], r["price"], r["term"],
+                    r["first_name"], r["last_name"], r["email"], diet])
+    return Response(buf.getvalue(), mimetype="text/csv", headers={
+        "Content-Disposition": "attachment; filename=outgoing-swaps-all.csv"})
+
+
 # ---------------------------------------------------------------- incoming swaps
 
 @bp.route("/incoming")
@@ -374,6 +402,30 @@ def incoming():
             "ORDER BY last_name, first_name", (s["id"],)).fetchall()
     return render_template("admin/incoming.html", swaps=swaps,
                            participants=participants)
+
+
+@bp.route("/incoming/export.csv")
+@admin_required
+def incoming_export():
+    db = get_db()
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["guest_college", "date", "host_name", "host_email", "host_phone",
+                "swap_notes", "first_name", "last_name", "dietary", "guest_notes"])
+    for s in db.execute("SELECT * FROM incoming_swaps ORDER BY dt").fetchall():
+        people = db.execute(
+            "SELECT * FROM incoming_participants WHERE swap_id=? "
+            "ORDER BY last_name, first_name", (s["id"],)).fetchall()
+        if not people:
+            w.writerow([s["guest_college"], s["dt"], s["host_name"],
+                        s["host_email"], s["host_phone"], s["notes"],
+                        "", "", "", ""])
+        for p in people:
+            w.writerow([s["guest_college"], s["dt"], s["host_name"],
+                        s["host_email"], s["host_phone"], s["notes"],
+                        p["first_name"], p["last_name"], p["dietary"], p["notes"]])
+    return Response(buf.getvalue(), mimetype="text/csv", headers={
+        "Content-Disposition": "attachment; filename=incoming-swaps-all.csv"})
 
 
 def _incoming_from_form():
