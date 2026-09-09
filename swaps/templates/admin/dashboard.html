@@ -44,6 +44,9 @@
     <input type="datetime-local" name="term_ballot_open" value="{{ term_ballot_open.replace(' ', 'T') }}">
     <label>Ballot closes (UK time — shown publicly)</label>
     <input type="datetime-local" name="term_ballot_close" value="{{ term_ballot_close.replace(' ', 'T') }}">
+    <label>Cancellation cut-off (hours before the formal; also closes claims)</label>
+    <input type="number" name="cancel_cutoff_hours" min="0" max="336" step="1"
+           value="{{ cancel_cutoff }}" style="max-width:7rem">
     <label style="font-weight:normal"><input type="checkbox" name="attendee_list_public"
       {% if list_public %}checked{% endif %}> Attendee list is public (unticked = login required)</label>
     <p><button>Save settings</button></p>

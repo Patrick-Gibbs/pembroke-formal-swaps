@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 from . import config
 from .allocation import run_ballot
-from .db import immediate, audit
+from .db import immediate, audit, get_setting
 
 LONDON = ZoneInfo(config.TIMEZONE)
 
@@ -32,6 +32,16 @@ def parse_local(s):
 
 def hours_until_formal(formal_dt_str):
     return (parse_local(formal_dt_str) - local_now()).total_seconds() / 3600
+
+
+def cancel_cutoff_hours(conn):
+    """Hours before a formal at which cancellations (and claims) close.
+    Admin-editable setting; falls back to config.CANCEL_CUTOFF_HOURS."""
+    try:
+        return float(get_setting(conn, "cancel_cutoff_hours", "")
+                     or config.CANCEL_CUTOFF_HOURS)
+    except ValueError:
+        return config.CANCEL_CUTOFF_HOURS
 
 
 def pending_holds(conn, formal_id):
@@ -172,8 +182,10 @@ def cancel_allocation(conn, user_id, allocation_id, rng=None, actor=None):
             (allocation_id,)).fetchone()
         if alloc is None or (user_id is not None and alloc["user_id"] != user_id):
             raise CancelError("No such active booking.")
-        if user_id is not None and hours_until_formal(alloc["dt"]) < config.CANCEL_CUTOFF_HOURS:
-            raise CancelError("Cancellations close 24 hours before the formal.")
+        cutoff = cancel_cutoff_hours(conn)
+        if user_id is not None and hours_until_formal(alloc["dt"]) < cutoff:
+            raise CancelError(f"Cancellations close {int(cutoff)} hours "
+                              "before the formal.")
         delay_s = rng.randint(0, 3600)
         release_at = (datetime.now(timezone.utc) + timedelta(seconds=delay_s)
                       ).strftime("%Y-%m-%d %H:%M:%S")
@@ -200,8 +212,9 @@ def claim_seat(conn, user_id, formal_id, actor=None):
                          (formal_id,)).fetchone()
         if f is None:
             raise ClaimError("This formal is not available.")
-        if hours_until_formal(f["dt"]) < config.CANCEL_CUTOFF_HOURS:
-            raise ClaimError("Claims close 24 hours before the formal.")
+        cutoff = cancel_cutoff_hours(conn)
+        if hours_until_formal(f["dt"]) < cutoff:
+            raise ClaimError(f"Claims close {int(cutoff)} hours before the formal.")
         already = conn.execute(
             "SELECT 1 FROM allocations WHERE user_id=? AND formal_id=? AND status='active'",
             (user_id, formal_id)).fetchone()

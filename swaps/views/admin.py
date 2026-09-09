@@ -71,6 +71,7 @@ def dashboard():
                            term=get_setting(db, "current_term"),
                            term_ballot_open=get_setting(db, "term_ballot_open"),
                            term_ballot_close=get_setting(db, "term_ballot_close"),
+                           cancel_cutoff=get_setting(db, "cancel_cutoff_hours", "72"),
                            list_public=get_setting(db, "attendee_list_public") == "1")
 
 
@@ -88,6 +89,11 @@ def settings():
     t_close = request.form.get("term_ballot_close", "").replace("T", " ").strip()
     set_setting(db, "term_ballot_open", t_open)
     set_setting(db, "term_ballot_close", t_close)
+    try:
+        cutoff = max(0, int(request.form.get("cancel_cutoff_hours", "72")))
+    except ValueError:
+        cutoff = 72
+    set_setting(db, "cancel_cutoff_hours", str(cutoff))
     audit(db, "admin", "settings", f"term={term} window={t_open}..{t_close} "
           f"public={request.form.get('attendee_list_public', '0')}")
     flash("Settings saved.", "ok")

@@ -22,14 +22,14 @@
       {% elif past[a['id']] %}
       <a class="btn" style="font-size:.8rem;padding:.15rem .5rem" href="/review/{{ a['formal_id'] }}">Rate it ★</a>
       {% elif a['status'] == 'active' %}
-      <span class="muted">within 24h — can't cancel</span>
+      <span class="muted">within {{ cutoff_h }}h — can't cancel</span>
       {% endif %}
     </td>
   </tr>
   {% endfor %}
 </table>
 <p class="muted">Cancelling releases your place to others at a random moment within
-the next hour. No cancellations in the 24 hours before a formal.</p>
+the next hour. No cancellations in the {{ cutoff_h }} hours before a formal.</p>
 {% endif %}
 <h2>Slot alerts</h2>
 {% if subs %}

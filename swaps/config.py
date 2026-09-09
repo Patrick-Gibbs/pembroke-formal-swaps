@@ -35,6 +35,6 @@ TRUST_PROXY = os.environ.get("TRUST_PROXY", "1") == "1"
 # Set 0 only for plain-HTTP local testing; must be 1 in production.
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "1") == "1"
 
-CANCEL_CUTOFF_HOURS = 24
+CANCEL_CUTOFF_HOURS = 72  # fallback; live value is the cancel_cutoff_hours setting
 VERIFY_TOKEN_MAX_AGE = 24 * 3600
 TIMEZONE = "Europe/London"

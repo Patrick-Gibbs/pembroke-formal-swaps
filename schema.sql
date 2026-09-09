@@ -159,3 +159,4 @@ CREATE TABLE IF NOT EXISTS settings (
 INSERT OR IGNORE INTO settings(key, value) VALUES ('attendee_list_public', '1');
 INSERT OR IGNORE INTO settings(key, value) VALUES ('current_term', '');
 INSERT OR IGNORE INTO settings(key, value) VALUES ('results_published', '1');
+INSERT OR IGNORE INTO settings(key, value) VALUES ('cancel_cutoff_hours', '72');

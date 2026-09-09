@@ -8,8 +8,9 @@ from flask import (Blueprint, abort, flash, redirect, render_template, request,
 from .. import config
 from ..db import get_db, get_setting, audit
 from ..security import current_user, login_required
-from ..services import (CancelError, ClaimError, cancel_allocation, claim_seat,
-                        free_seats, hours_until_formal, local_now, parse_local)
+from ..services import (CancelError, ClaimError, cancel_allocation,
+                        cancel_cutoff_hours, claim_seat, free_seats,
+                        hours_until_formal, local_now, parse_local)
 
 PHOTO_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
@@ -188,12 +189,15 @@ def me():
         "SELECT s.id, f.host_college, f.dt, f.id AS formal_id FROM subscriptions s "
         "JOIN formals f ON f.id = s.formal_id WHERE s.user_id=? ORDER BY f.dt",
         (user["id"],)).fetchall()
+    cutoff = cancel_cutoff_hours(db)
     cancellable = {a["id"]: (a["status"] == "active"
-                             and hours_until_formal(a["dt"]) >= 24) for a in allocs}
+                             and hours_until_formal(a["dt"]) >= cutoff)
+                   for a in allocs}
     past = {a["id"]: (a["status"] == "active" and hours_until_formal(a["dt"]) < 0)
             for a in allocs}
     return render_template("me.html", allocs=allocs, subs=subs,
-                           cancellable=cancellable, past=past)
+                           cancellable=cancellable, past=past,
+                           cutoff_h=int(cutoff))
 
 
 @bp.route("/cancel/<int:alloc_id>", methods=["POST"])
