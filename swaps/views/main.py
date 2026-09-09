@@ -53,6 +53,7 @@ def index():
                            ballot_open=_ballot_window(db, term) if term else False,
                            ballot_closes=t_close, ballot_opens=t_open,
                            opens_soon=opens_soon,
+                           cutoff_h=int(cancel_cutoff_hours(db)),
                            free_seats={f["id"]: free_seats(db, f["id"], f["slots"])
                                        for f in formals})
 

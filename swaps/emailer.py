@@ -120,7 +120,7 @@ def allocation_result_email(to, formals, ics_files):
         f"{blocks}"
         f"<p>Calendar invitations are attached — open one to add the formal to "
         f"your calendar.</p>"
-        f"<p>Manage your places (or cancel, up to 24h before) at "
+        f"<p>Manage your places (or cancel, up until the cut-off) at "
         f"<a href=\"{config.SITE_URL}/me\">{config.SITE_URL}/me</a>.</p>",
         attachments=ics_files)
 
