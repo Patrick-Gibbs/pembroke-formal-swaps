@@ -34,6 +34,12 @@ def init_db(db_path=None):
                      ("review_sent", "INTEGER NOT NULL DEFAULT 0")]:
         if col not in cols:
             conn.execute(f"ALTER TABLE formals ADD COLUMN {col} {ddl}")
+    acols = {r["name"] for r in conn.execute("PRAGMA table_info(allocations)")}
+    if "notified" not in acols:
+        conn.execute("ALTER TABLE allocations ADD COLUMN notified "
+                     "INTEGER NOT NULL DEFAULT 0")
+        # Pre-existing allocations were emailed under the old flow.
+        conn.execute("UPDATE allocations SET notified=1")
     conn.close()
 
 

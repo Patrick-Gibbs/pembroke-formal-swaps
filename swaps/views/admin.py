@@ -59,8 +59,15 @@ def dashboard():
                           "free": free_seats(db, f["id"], f["slots"])}
     users_n = db.execute("SELECT COUNT(*) n FROM users WHERE email_verified=1"
                          ).fetchone()["n"]
+    term_now = get_setting(db, "current_term")
+    unnotified = db.execute(
+        "SELECT COUNT(*) n FROM allocations a JOIN formals f ON f.id=a.formal_id "
+        "WHERE a.status='active' AND a.notified=0 AND f.term=?",
+        (term_now,)).fetchone()["n"]
     return render_template("admin/dashboard.html", formals=formals, stats=stats,
-                           users_n=users_n,
+                           users_n=users_n, unnotified=unnotified,
+                           results_published=get_setting(db, "results_published",
+                                                         "1") == "1",
                            term=get_setting(db, "current_term"),
                            term_ballot_open=get_setting(db, "term_ballot_open"),
                            term_ballot_close=get_setting(db, "term_ballot_close"),
@@ -72,6 +79,8 @@ def dashboard():
 def settings():
     db = get_db()
     term = request.form.get("current_term", "").strip()
+    if term != get_setting(db, "current_term"):
+        set_setting(db, "results_published", "0")  # new term starts unpublished
     set_setting(db, "current_term", term)
     set_setting(db, "attendee_list_public",
                 "1" if request.form.get("attendee_list_public") else "0")
@@ -155,57 +164,6 @@ def formal_delete(fid):
     return redirect(url_for("admin.dashboard"))
 
 
-def _send_result_emails(db, term, new_allocs):
-    """Email winners their formals (+ calendar invites) and entrants who ended
-    up with nothing a courteous miss note. Delivery happens on a background
-    thread so the admin request returns immediately."""
-    import threading
-
-    from .. import emailer
-    from ..ics import formal_ics
-
-    by_user = {}
-    for uid, fid in new_allocs:
-        by_user.setdefault(uid, []).append(fid)
-    winners = []
-    for uid, fids in by_user.items():
-        u = db.execute("SELECT email FROM users WHERE id=? AND email_verified=1",
-                       (uid,)).fetchone()
-        if not u:
-            continue
-        formals = [dict(db.execute("SELECT * FROM formals WHERE id=?", (fid,)).fetchone())
-                   for fid in sorted(set(fids))]
-        ics = [(f"{f['host_college']}-formal.ics", formal_ics(f).encode())
-               for f in formals]
-        winners.append((u["email"], formals, ics))
-
-    # Entered (own prefs, or accepted member of a group whose leader entered)
-    # but hold no active place this term at all -> miss email.
-    entrants = {r["email"] for r in db.execute(
-        "SELECT DISTINCT u.email FROM users u JOIN preferences p ON p.user_id=u.id "
-        "WHERE p.term=? AND u.email_verified=1", (term,)).fetchall()}
-    entrants |= {r["email"] for r in db.execute(
-        "SELECT DISTINCT u.email FROM users u "
-        "JOIN ballot_group_members m ON m.user_id=u.id AND m.status='accepted' "
-        "JOIN ballot_groups g ON g.id=m.group_id "
-        "JOIN preferences p ON p.user_id=g.leader_user_id AND p.term=g.term "
-        "WHERE g.term=? AND u.email_verified=1", (term,)).fetchall()}
-    seated = {r["email"] for r in db.execute(
-        "SELECT DISTINCT u.email FROM users u JOIN allocations a ON a.user_id=u.id "
-        "JOIN formals f ON f.id=a.formal_id "
-        "WHERE a.status='active' AND f.term=?", (term,)).fetchall()}
-    missed = sorted(entrants - seated)
-
-    def deliver():
-        for email, formals, ics in winners:
-            emailer.allocation_result_email(email, formals, ics)
-        for email in missed:
-            emailer.no_place_email(email, term)
-
-    threading.Thread(target=deliver, daemon=True).start()
-    return len(winners) + len(missed)
-
-
 @bp.route("/allocate", methods=["GET", "POST"])
 @admin_required
 def allocate():
@@ -215,14 +173,91 @@ def allocate():
         term = request.form.get("term", term).strip()
         seed = request.form.get("seed", "").strip() or None
         run_id, used_seed, placed, log, new_allocs = run_allocation(db, term, seed)
-        emailed = _send_result_emails(db, term, new_allocs)
-        flash(f"Allocation run #{run_id} complete: {placed} places assigned. "
-              f"Seed: {used_seed}. Result emails queued to {emailed} member(s).",
-              "ok")
-        return redirect(url_for("admin.runs"))
+        # First generate of the term? Hold results as a draft until Publish.
+        already_public = db.execute(
+            "SELECT 1 FROM allocations a JOIN formals f ON f.id=a.formal_id "
+            "WHERE a.status='active' AND a.notified=1 AND f.term=? LIMIT 1",
+            (term,)).fetchone()
+        if not already_public:
+            set_setting(db, "results_published", "0")
+        flash(f"Generated: run #{run_id}, {placed} places assigned "
+              f"(seed {used_seed}). This is a DRAFT — no emails sent yet. "
+              f"Check the rosters, then hit Publish on the dashboard.", "ok")
+        return redirect(url_for("admin.dashboard"))
     n_prefs = db.execute("SELECT COUNT(DISTINCT user_id) n FROM preferences WHERE term=?",
                          (term,)).fetchone()["n"]
     return render_template("admin/allocate.html", term=term, n_prefs=n_prefs)
+
+
+@bp.route("/publish", methods=["POST"])
+@admin_required
+def publish():
+    """Make results public and email every not-yet-notified winner their
+    formals (+ calendar invites); entrants left with nothing get a miss note."""
+    import threading
+
+    from .. import emailer
+    from ..ics import formal_ics
+
+    db = get_db()
+    term = get_setting(db, "current_term")
+    rows = db.execute(
+        "SELECT a.id, a.user_id, a.formal_id FROM allocations a "
+        "JOIN formals f ON f.id=a.formal_id "
+        "WHERE a.status='active' AND a.notified=0 AND f.term=?", (term,)).fetchall()
+    by_user = {}
+    for r in rows:
+        by_user.setdefault(r["user_id"], []).append(r["formal_id"])
+    winners = []
+    for uid, fids in by_user.items():
+        u = db.execute("SELECT email FROM users WHERE id=? AND email_verified=1",
+                       (uid,)).fetchone()
+        if not u:
+            continue
+        formals = [dict(db.execute("SELECT * FROM formals WHERE id=?",
+                                   (fid,)).fetchone())
+                   for fid in sorted(set(fids))]
+        ics = [(f"{f['host_college']}-formal.ics", formal_ics(f).encode())
+               for f in formals]
+        winners.append((u["email"], formals, ics))
+    if rows:
+        db.execute("UPDATE allocations SET notified=1 WHERE id IN (%s)"
+                   % ",".join("?" * len(rows)), [r["id"] for r in rows])
+
+    first_publish = get_setting(db, "results_published") != "1"
+    missed = []
+    if first_publish:
+        # Entered (own prefs, or accepted member of a group whose leader
+        # entered) but hold no active place this term -> miss email.
+        entrants = {r["email"] for r in db.execute(
+            "SELECT DISTINCT u.email FROM users u JOIN preferences p ON p.user_id=u.id "
+            "WHERE p.term=? AND u.email_verified=1", (term,)).fetchall()}
+        entrants |= {r["email"] for r in db.execute(
+            "SELECT DISTINCT u.email FROM users u "
+            "JOIN ballot_group_members m ON m.user_id=u.id AND m.status='accepted' "
+            "JOIN ballot_groups g ON g.id=m.group_id "
+            "JOIN preferences p ON p.user_id=g.leader_user_id AND p.term=g.term "
+            "WHERE g.term=? AND u.email_verified=1", (term,)).fetchall()}
+        seated = {r["email"] for r in db.execute(
+            "SELECT DISTINCT u.email FROM users u JOIN allocations a ON a.user_id=u.id "
+            "JOIN formals f ON f.id=a.formal_id "
+            "WHERE a.status='active' AND f.term=?", (term,)).fetchall()}
+        missed = sorted(entrants - seated)
+    set_setting(db, "results_published", "1")
+    audit(db, "admin", "publish_results",
+          f"term={term} winners={len(winners)} missed={len(missed)}")
+
+    def deliver():
+        for email, formals, ics in winners:
+            emailer.allocation_result_email(email, formals, ics)
+        for email in missed:
+            emailer.no_place_email(email, term)
+
+    threading.Thread(target=deliver, daemon=True).start()
+    flash(f"Published. Result emails queued: {len(winners)} winner(s)"
+          + (f", {len(missed)} without a place" if missed else "")
+          + ". The assigned swaps page is now public.", "ok")
+    return redirect(url_for("admin.dashboard"))
 
 
 @bp.route("/runs")
@@ -290,6 +325,143 @@ def cancel_alloc(alloc_id):
     except CancelError as e:
         flash(str(e), "error")
     return redirect(request.referrer or url_for("admin.dashboard"))
+
+
+@bp.route("/formals/<int:fid>/email-all", methods=["POST"])
+@admin_required
+def email_all(fid):
+    """Send a custom email to every active attendee of an outgoing formal."""
+    import threading
+
+    from .. import emailer
+    from ..services import attendee_emails
+
+    db = get_db()
+    f = db.execute("SELECT * FROM formals WHERE id=?", (fid,)).fetchone()
+    if f is None:
+        return redirect(url_for("admin.dashboard"))
+    subject = request.form.get("subject", "").strip()[:200]
+    body = request.form.get("body", "").strip()[:8000]
+    if not subject or not body:
+        flash("Subject and message are both required.", "error")
+        return redirect(url_for("admin.roster", fid=fid))
+    html = "".join(f"<p>{line}</p>" for line in body.splitlines() if line.strip())
+    recipients = attendee_emails(db, fid)
+    audit(db, "admin", "email_all",
+          f"formal={fid} subject={subject!r} recipients={len(recipients)}")
+
+    def deliver():
+        for email in recipients:
+            emailer.send(email, subject, html)
+
+    threading.Thread(target=deliver, daemon=True).start()
+    flash(f"Email queued to {len(recipients)} attendee(s) of the "
+          f"{f['host_college']} formal.", "ok")
+    return redirect(url_for("admin.roster", fid=fid))
+
+
+# ---------------------------------------------------------------- incoming swaps
+
+@bp.route("/incoming")
+@admin_required
+def incoming():
+    db = get_db()
+    swaps = db.execute("SELECT * FROM incoming_swaps ORDER BY dt").fetchall()
+    participants = {}
+    for s in swaps:
+        participants[s["id"]] = db.execute(
+            "SELECT * FROM incoming_participants WHERE swap_id=? "
+            "ORDER BY last_name, first_name", (s["id"],)).fetchall()
+    return render_template("admin/incoming.html", swaps=swaps,
+                           participants=participants)
+
+
+def _incoming_from_form():
+    return (request.form.get("guest_college", "").strip()[:120],
+            request.form.get("dt", "").replace("T", " ").strip(),
+            request.form.get("host_name", "").strip()[:120],
+            request.form.get("host_email", "").strip()[:200],
+            request.form.get("host_phone", "").strip()[:50],
+            request.form.get("notes", "").strip()[:2000])
+
+
+@bp.route("/incoming/new", methods=["POST"])
+@admin_required
+def incoming_new():
+    db = get_db()
+    vals = _incoming_from_form()
+    if not vals[0] or not vals[1]:
+        flash("Guest college and date/time are required.", "error")
+    else:
+        db.execute("INSERT INTO incoming_swaps(guest_college, dt, host_name, "
+                   "host_email, host_phone, notes) VALUES (?,?,?,?,?,?)", vals)
+        audit(db, "admin", "incoming_create", f"{vals[0]} {vals[1]}")
+        flash("Incoming swap added.", "ok")
+    return redirect(url_for("admin.incoming"))
+
+
+@bp.route("/incoming/<int:sid>/update", methods=["POST"])
+@admin_required
+def incoming_update(sid):
+    db = get_db()
+    vals = _incoming_from_form()
+    db.execute("UPDATE incoming_swaps SET guest_college=?, dt=?, host_name=?, "
+               "host_email=?, host_phone=?, notes=? WHERE id=?", vals + (sid,))
+    audit(db, "admin", "incoming_update", f"id={sid} {vals[0]}")
+    flash("Saved.", "ok")
+    return redirect(url_for("admin.incoming"))
+
+
+@bp.route("/incoming/<int:sid>/delete", methods=["POST"])
+@admin_required
+def incoming_delete(sid):
+    db = get_db()
+    db.execute("DELETE FROM incoming_participants WHERE swap_id=?", (sid,))
+    db.execute("DELETE FROM incoming_swaps WHERE id=?", (sid,))
+    audit(db, "admin", "incoming_delete", f"id={sid}")
+    flash("Incoming swap deleted.", "ok")
+    return redirect(url_for("admin.incoming"))
+
+
+@bp.route("/incoming/<int:sid>/participants/add", methods=["POST"])
+@admin_required
+def incoming_participant_add(sid):
+    db = get_db()
+    first = request.form.get("first_name", "").strip()[:80]
+    last = request.form.get("last_name", "").strip()[:80]
+    if not first or not last:
+        flash("First and last name required.", "error")
+    else:
+        db.execute("INSERT INTO incoming_participants(swap_id, first_name, "
+                   "last_name, dietary, notes) VALUES (?,?,?,?,?)",
+                   (sid, first, last,
+                    request.form.get("dietary", "").strip()[:300],
+                    request.form.get("notes", "").strip()[:300]))
+        flash(f"Added {first} {last}.", "ok")
+    return redirect(url_for("admin.incoming"))
+
+
+@bp.route("/incoming/participants/<int:pid>/update", methods=["POST"])
+@admin_required
+def incoming_participant_update(pid):
+    db = get_db()
+    db.execute("UPDATE incoming_participants SET first_name=?, last_name=?, "
+               "dietary=?, notes=? WHERE id=?",
+               (request.form.get("first_name", "").strip()[:80],
+                request.form.get("last_name", "").strip()[:80],
+                request.form.get("dietary", "").strip()[:300],
+                request.form.get("notes", "").strip()[:300], pid))
+    flash("Saved.", "ok")
+    return redirect(url_for("admin.incoming"))
+
+
+@bp.route("/incoming/participants/<int:pid>/delete", methods=["POST"])
+@admin_required
+def incoming_participant_delete(pid):
+    db = get_db()
+    db.execute("DELETE FROM incoming_participants WHERE id=?", (pid,))
+    flash("Removed.", "ok")
+    return redirect(url_for("admin.incoming"))
 
 
 @bp.route("/users")

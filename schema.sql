@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS allocations (
     formal_id INTEGER NOT NULL REFERENCES formals(id),
     status TEXT NOT NULL DEFAULT 'active',   -- active | cancelled
     source TEXT NOT NULL DEFAULT 'ballot',   -- ballot | claim | admin
+    notified INTEGER NOT NULL DEFAULT 0,     -- result email sent (at publish)
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     cancelled_at TEXT
 );
@@ -124,9 +125,30 @@ CREATE TABLE IF NOT EXISTS ballot_group_members (
     UNIQUE(group_id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS incoming_swaps (
+    id INTEGER PRIMARY KEY,
+    guest_college TEXT NOT NULL,
+    dt TEXT NOT NULL,                    -- 'YYYY-MM-DD HH:MM' UK time
+    host_name TEXT NOT NULL DEFAULT '',  -- their organiser
+    host_email TEXT NOT NULL DEFAULT '',
+    host_phone TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS incoming_participants (
+    id INTEGER PRIMARY KEY,
+    swap_id INTEGER NOT NULL REFERENCES incoming_swaps(id),
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    dietary TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
 INSERT OR IGNORE INTO settings(key, value) VALUES ('attendee_list_public', '1');
 INSERT OR IGNORE INTO settings(key, value) VALUES ('current_term', '');
+INSERT OR IGNORE INTO settings(key, value) VALUES ('results_published', '1');

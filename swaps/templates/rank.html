@@ -41,7 +41,26 @@ seats at a formal to get in.</div>
 
 <p class="muted">Put the formals you want in order (1 = most wanted). Leave out any
 you don't want. You can edit until the ballot closes{% if ballot_closes %}
-(<b>{{ ballot_closes }}</b>){% endif %}.</p>
+(<b>{{ ballot_closes }}</b> — <span id="countdown" style="font-variant-numeric:tabular-nums"></span>){% endif %}.</p>
+{% if ballot_closes %}
+<script>
+(function () {
+  const end = new Date("{{ ballot_closes.replace(' ', 'T') }}");
+  function tick() {
+    const el = document.getElementById('countdown');
+    let s = Math.floor((end - Date.now()) / 1000);
+    if (s <= 0) { el.textContent = 'closed'; return; }
+    const d = Math.floor(s / 86400); s %= 86400;
+    const h = Math.floor(s / 3600); s %= 3600;
+    const m = Math.floor(s / 60); s %= 60;
+    el.textContent = (d ? d + 'd ' : '') + String(h).padStart(2, '0') + ':' +
+      String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0') + ' left';
+    setTimeout(tick, 1000);
+  }
+  window.addEventListener('DOMContentLoaded', tick);
+})();
+</script>
+{% endif %}
 <form method="post" id="rankform">
   <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
   <input type="hidden" name="order" id="order">

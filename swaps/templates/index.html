@@ -34,9 +34,29 @@
   <p>No formals have been announced for {{ term }} yet.</p>
 {% else %}
   {% if ballot_open %}
-    <div class="flash ok">The ballot is <b>open</b>{% if ballot_closes %} — closes <b>{{ ballot_closes }}</b>{% endif %} —
+    <div class="flash ok">The ballot is <b>open</b>{% if ballot_closes %} — closes <b>{{ ballot_closes }}</b> <span id="countdown" style="font-variant-numeric:tabular-nums"></span>{% endif %} —
       {% if user %}<a href="/rank">rank your formals now</a>.{% else %}<a href="/register">register</a> or <a href="/login">log in</a> to rank your formals.{% endif %}
     </div>
+    {% if ballot_closes %}
+    <script>
+    (function () {
+      const end = new Date("{{ ballot_closes.replace(' ', 'T') }}");
+      const el = document.getElementById('countdown');
+      function tick() {
+        let s = Math.floor((end - Date.now()) / 1000);
+        if (s <= 0) { el.textContent = '(closed)'; return; }
+        const d = Math.floor(s / 86400); s %= 86400;
+        const h = Math.floor(s / 3600); s %= 3600;
+        const m = Math.floor(s / 60); s %= 60;
+        el.textContent = '(' + (d ? d + 'd ' : '') +
+          String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' +
+          String(s).padStart(2, '0') + ' left)';
+        setTimeout(tick, 1000);
+      }
+      tick();
+    })();
+    </script>
+    {% endif %}
   {% elif opens_soon %}
     <div class="flash ok">The ballot opens <b>{{ ballot_opens }}</b>{% if ballot_closes %} and closes <b>{{ ballot_closes }}</b>{% endif %} — <a href="/register">register now</a> so you're ready.</div>
   {% endif %}

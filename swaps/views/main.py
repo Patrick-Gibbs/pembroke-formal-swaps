@@ -122,9 +122,14 @@ def rank():
 
 @bp.route("/attendees")
 def attendees():
+    from flask import session
     db = get_db()
     if get_setting(db, "attendee_list_public") != "1" and current_user() is None:
         return redirect(url_for("auth.login", next="/attendees"))
+    if (get_setting(db, "results_published", "1") != "1"
+            and not session.get("is_admin")):
+        return render_template("attendees.html", data=[], unpublished=True,
+                               term=get_setting(db, "current_term"))
     term = get_setting(db, "current_term")
     formals = db.execute(
         "SELECT * FROM formals WHERE term=? AND status='allocated' ORDER BY dt",
@@ -143,7 +148,20 @@ def attendees():
             if r["dietary_other"]:
                 diets[r["dietary_other"]] = diets.get(r["dietary_other"], 0) + 1
         data.append((f, rows, diets))
-    return render_template("attendees.html", data=data, term=term)
+    return render_template("attendees.html", data=data, term=term,
+                           unpublished=False)
+
+
+@bp.route("/incoming")
+def incoming():
+    db = get_db()
+    swaps = db.execute("SELECT * FROM incoming_swaps ORDER BY dt").fetchall()
+    participants = {}
+    for s in swaps:
+        participants[s["id"]] = db.execute(
+            "SELECT first_name, last_name FROM incoming_participants "
+            "WHERE swap_id=? ORDER BY last_name, first_name", (s["id"],)).fetchall()
+    return render_template("incoming.html", swaps=swaps, participants=participants)
 
 
 @bp.route("/me")

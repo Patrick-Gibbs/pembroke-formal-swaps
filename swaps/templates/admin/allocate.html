@@ -15,7 +15,10 @@ data reproduces identical results.</p>
   <input type="text" name="term" value="{{ term }}">
   <label>Seed (leave blank for a fresh random seed — it will be recorded)</label>
   <input type="text" name="seed" placeholder="blank = random">
-  <p><button onclick="return confirm('Run the allocation now? Existing active places are kept; remaining seats are filled by ballot.')">Run allocation</button></p>
+  <p><button onclick="return confirm('Generate the allocation now? Existing active places are kept; remaining seats are filled by ballot. Nothing is emailed or made public until you hit Publish.')">Generate (draft — no emails)</button></p>
+  <p class="muted">Generating creates a <b>draft</b>: check the rosters, re-generate
+  with a different seed if something's off, then hit <b>Publish</b> on the
+  dashboard to email everyone and make the lists public.</p>
 </form>
 </div>
 {% endblock %}

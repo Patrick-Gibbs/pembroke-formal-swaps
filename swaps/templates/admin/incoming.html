@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Incoming swaps — Admin{% endblock %}
+{% block content %}
+<h1>Incoming swaps (admin)</h1>
+<p><a class="btn ghost" href="/admin/">Back to dashboard</a>
+   <a class="btn ghost" href="/incoming">Public view</a></p>
+
+<div class="card">
+  <h3>Add an incoming swap</h3>
+  <form method="post" action="/admin/incoming/new">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <label>Guest college</label>
+    <input type="text" name="guest_college" required>
+    <label>Date &amp; time (UK)</label>
+    <input type="datetime-local" name="dt" required>
+    <label>Their organiser — name</label>
+    <input type="text" name="host_name" placeholder="e.g. Jane Smith">
+    <label>Their organiser — email</label>
+    <input type="email" name="host_email">
+    <label>Their organiser — phone</label>
+    <input type="text" name="host_phone">
+    <label>Notes (payment arranged, gowns, etc.)</label>
+    <textarea name="notes" rows="2" style="width:100%;max-width:26rem;padding:.45rem;border:1px solid #b8c4d0;border-radius:5px"></textarea>
+    <p><button>Add swap</button></p>
+  </form>
+</div>
+
+{% for s in swaps %}
+<div class="card">
+  <h2>{{ s['guest_college'] }} — {{ s['dt'] }}</h2>
+  <form method="post" action="/admin/incoming/{{ s['id'] }}/update">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <table>
+      <tr><th>College</th><th>Date/time</th><th>Host name</th><th>Host email</th><th>Host phone</th></tr>
+      <tr>
+        <td><input type="text" name="guest_college" value="{{ s['guest_college'] }}" style="max-width:10rem"></td>
+        <td><input type="datetime-local" name="dt" value="{{ s['dt'].replace(' ', 'T') }}" style="max-width:12rem"></td>
+        <td><input type="text" name="host_name" value="{{ s['host_name'] }}" style="max-width:10rem"></td>
+        <td><input type="email" name="host_email" value="{{ s['host_email'] }}" style="max-width:12rem"></td>
+        <td><input type="text" name="host_phone" value="{{ s['host_phone'] }}" style="max-width:8rem"></td>
+      </tr>
+    </table>
+    <label>Notes</label>
+    <textarea name="notes" rows="2" style="width:100%;max-width:40rem;padding:.45rem;border:1px solid #b8c4d0;border-radius:5px">{{ s['notes'] }}</textarea>
+    <p><button class="small">Save swap details</button></p>
+  </form>
+  <form method="post" action="/admin/incoming/{{ s['id'] }}/delete" class="inline"
+        onsubmit="return confirm('Delete this incoming swap and its guest list?')">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <button class="small danger">Delete swap</button>
+  </form>
+
+  <h3>Guests ({{ participants[s['id']]|length }})</h3>
+  <table>
+    <tr><th>First</th><th>Last</th><th>Dietary</th><th>Notes</th><th></th></tr>
+    {% for p in participants[s['id']] %}
+    <tr>
+      <form method="post" action="/admin/incoming/participants/{{ p['id'] }}/update">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <td><input type="text" name="first_name" value="{{ p['first_name'] }}" style="max-width:8rem"></td>
+      <td><input type="text" name="last_name" value="{{ p['last_name'] }}" style="max-width:8rem"></td>
+      <td><input type="text" name="dietary" value="{{ p['dietary'] }}" style="max-width:12rem"></td>
+      <td><input type="text" name="notes" value="{{ p['notes'] }}" style="max-width:10rem"></td>
+      <td style="white-space:nowrap">
+        <button class="small">Save</button>
+      </form>
+        <form method="post" action="/admin/incoming/participants/{{ p['id'] }}/delete" class="inline">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <button class="small danger">✕</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    <tr>
+      <form method="post" action="/admin/incoming/{{ s['id'] }}/participants/add">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <td><input type="text" name="first_name" placeholder="First" style="max-width:8rem" required></td>
+      <td><input type="text" name="last_name" placeholder="Last" style="max-width:8rem" required></td>
+      <td><input type="text" name="dietary" placeholder="Dietary" style="max-width:12rem"></td>
+      <td><input type="text" name="notes" placeholder="Notes" style="max-width:10rem"></td>
+      <td><button class="small">+ Add</button></td>
+      </form>
+    </tr>
+  </table>
+</div>
+{% else %}
+<p>No incoming swaps yet — add one above.</p>
+{% endfor %}
+{% endblock %}

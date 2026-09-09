@@ -26,6 +26,19 @@
   {% endfor %}
 </table>
 <div class="card">
+  <h3>Email all attendees</h3>
+  <form method="post" action="/admin/formals/{{ f['id'] }}/email-all"
+        onsubmit="return confirm('Send this email to every active attendee of this formal?')">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <label>Subject</label>
+    <input type="text" name="subject" required placeholder="e.g. {{ f['host_college'] }} formal — meeting point update">
+    <label>Message</label>
+    <textarea name="body" rows="5" required style="width:100%;max-width:32rem;padding:.45rem;border:1px solid #b8c4d0;border-radius:5px" placeholder="Plain text; blank lines make paragraphs."></textarea>
+    <p><button>Send to all active attendees</button></p>
+  </form>
+</div>
+
+<div class="card">
   <h3>Manually add someone</h3>
   <form method="post" action="/admin/formals/{{ f['id'] }}/add-user">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">

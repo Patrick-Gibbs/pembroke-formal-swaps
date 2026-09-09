@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Incoming swaps — Pembroke Formal Swaps{% endblock %}
+{% block content %}
+<h1>Incoming swaps</h1>
+<p class="muted">Colleges joining us for formal at Pembroke.</p>
+{% for s in swaps %}
+<div class="card">
+  <h2>{{ s['guest_college'] }} — {{ s['dt'] }}</h2>
+  {% set people = participants[s['id']] %}
+  {% if people %}
+  <p class="muted">{{ people|length }} guest(s)</p>
+  <table>
+    <tr><th>Name</th></tr>
+    {% for p in people %}<tr><td>{{ p['first_name'] }} {{ p['last_name'] }}</td></tr>{% endfor %}
+  </table>
+  {% else %}<p class="muted">Guest list to follow.</p>{% endif %}
+</div>
+{% else %}
+<p>No incoming swaps scheduled yet.</p>
+{% endfor %}
+{% endblock %}

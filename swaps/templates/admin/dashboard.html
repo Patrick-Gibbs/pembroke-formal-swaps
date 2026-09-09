@@ -2,9 +2,26 @@
 {% block title %}Admin — Pembroke Formal Swaps{% endblock %}
 {% block content %}
 <h1>Admin</h1>
+
+{% if unnotified > 0 or not results_published %}
+<div class="flash ok" style="display:flex;align-items:center;gap:1rem">
+  <span>
+    {% if not results_published %}Results are in <b>DRAFT</b> — not public, no emails sent.{% endif %}
+    {% if unnotified > 0 %}<b>{{ unnotified }}</b> allocation(s) awaiting publication.{% endif %}
+    Review rosters below, then publish.
+  </span>
+  <form method="post" action="/admin/publish" class="inline"
+        onsubmit="return confirm('Publish results? Everyone gets their result email (with calendar invites) and the assigned swaps page goes public.')">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <button>📣 Publish results</button>
+  </form>
+</div>
+{% endif %}
+
 <p>
   <a class="btn" href="/admin/formals/new">+ New formal</a>
-  <a class="btn" href="/admin/allocate">Run allocation</a>
+  <a class="btn" href="/admin/allocate">Generate allocation</a>
+  <a class="btn" href="/admin/incoming">Incoming swaps</a>
   <a class="btn ghost" href="/admin/runs">Allocation runs</a>
   <a class="btn ghost" href="/admin/users">Users ({{ users_n }})</a>
   <a class="btn ghost" href="/admin/subscriptions">Subscriptions &amp; releases</a>

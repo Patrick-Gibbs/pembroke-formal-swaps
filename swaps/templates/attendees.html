@@ -1,8 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Attendees — Pembroke Formal Swaps{% endblock %}
 {% block content %}
-<h1>Attendee lists{% if term %} — {{ term }}{% endif %}</h1>
-{% if not data %}<p>No allocated formals yet — lists appear here after the ballot runs.</p>{% endif %}
+<h1>Assigned swaps{% if term %} — {{ term }}{% endif %}</h1>
+{% if unpublished %}
+<p>The ballot results haven't been published yet — check back soon! You'll get
+an email with your result the moment they go out.</p>
+{% elif not data %}<p>No allocated formals yet — lists appear here after the ballot runs.</p>{% endif %}
 {% for f, rows, diets in data %}
 <div class="card">
   <h2>{{ f['host_college'] }} — {{ f['dt'] }}</h2>
