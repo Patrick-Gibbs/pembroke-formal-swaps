@@ -42,11 +42,18 @@ footer { text-align:center; color:#8a97a5; font-size:.8rem; margin:2.5rem 0 1rem
    fallback (pastes into Excel/Sheets with columns intact). */
 async function copyTable(id, btn) {
   const el = document.getElementById(id);
-  const text = Array.from(el.querySelectorAll('tr')).map(tr =>
-    Array.from(tr.querySelectorAll('th,td')).map(c => c.textContent.trim()).join('\t')
-  ).join('\n');
-  const caption = el.querySelector('p');
-  const plain = (caption ? caption.textContent + '\n' : '') + text;
+  const parts = [];
+  el.querySelectorAll('p, table').forEach(node => {
+    if (node.tagName === 'P') {
+      if (parts.length) parts.push('');
+      parts.push(node.textContent.trim());
+    } else {
+      node.querySelectorAll('tr').forEach(tr => parts.push(
+        Array.from(tr.querySelectorAll('th,td'))
+             .map(c => c.textContent.trim()).join('\t')));
+    }
+  });
+  const plain = parts.join('\n');
   try {
     await navigator.clipboard.write([new ClipboardItem({
       'text/html': new Blob([el.innerHTML], {type: 'text/html'}),

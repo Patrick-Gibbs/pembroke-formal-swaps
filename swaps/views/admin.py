@@ -60,12 +60,20 @@ def dashboard():
     users_n = db.execute("SELECT COUNT(*) n FROM users WHERE email_verified=1"
                          ).fetchone()["n"]
     term_now = get_setting(db, "current_term")
+    rosters = {}
+    for f in formals:
+        if f["term"] == term_now:
+            rosters[f["id"]] = db.execute(
+                "SELECT u.first_name, u.last_name, u.email, u.dietary_flags, "
+                "u.dietary_other FROM allocations a JOIN users u ON u.id=a.user_id "
+                "WHERE a.formal_id=? AND a.status='active' "
+                "ORDER BY u.last_name, u.first_name", (f["id"],)).fetchall()
     unnotified = db.execute(
         "SELECT COUNT(*) n FROM allocations a JOIN formals f ON f.id=a.formal_id "
         "WHERE a.status='active' AND a.notified=0 AND f.term=?",
         (term_now,)).fetchone()["n"]
     return render_template("admin/dashboard.html", formals=formals, stats=stats,
-                           users_n=users_n, unnotified=unnotified,
+                           users_n=users_n, unnotified=unnotified, rosters=rosters,
                            results_published=get_setting(db, "results_published",
                                                          "1") == "1",
                            term=get_setting(db, "current_term"),

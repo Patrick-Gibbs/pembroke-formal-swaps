@@ -28,6 +28,7 @@
   <a class="btn ghost" href="/admin/subscriptions">Subscriptions &amp; releases</a>
   <a class="btn ghost" href="/admin/audit">Audit log</a>
   <a class="btn ghost" href="/admin/export.csv{% if term %}?term={{ term|urlencode }}{% endif %}">Export all rosters (CSV)</a>
+  <button class="btn ghost" type="button" onclick="copyTable('copy-all-rosters', this)">📋 Copy all rosters</button>
   <form class="inline" method="post" action="/admin/logout">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <button class="ghost">Log out</button>
@@ -51,6 +52,24 @@
       {% if list_public %}checked{% endif %}> Attendee list is public (unticked = login required)</label>
     <p><button>Save settings</button></p>
   </form>
+</div>
+
+<div id="copy-all-rosters" style="display:none">
+  {% for f in formals if f['id'] in rosters %}
+  <p><b>{{ f['host_college'] }} formal — {{ f['dt'] }}{% if f['price'] %} — {{ f['price'] }}{% endif %}
+  — {{ rosters[f['id']]|length }}/{{ f['slots'] }} attendee(s)</b></p>
+  <table border="1" cellpadding="6" style="border-collapse:collapse;border:1px solid #999;font-family:Arial,sans-serif;font-size:13px">
+    <tr style="background:#eef3f8"><th>First name</th><th>Last name</th><th>Email</th><th>Dietary requirements</th></tr>
+    {% for r in rosters[f['id']] %}
+    <tr>
+      <td>{{ r['first_name'] }}</td>
+      <td>{{ r['last_name'] }}</td>
+      <td>{{ r['email'] }}</td>
+      <td>{{ ", ".join((r['dietary_flags'].split(',') if r['dietary_flags'] else []) + ([r['dietary_other']] if r['dietary_other'] else [])) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endfor %}
 </div>
 
 <h2>Formals</h2>
