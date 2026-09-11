@@ -6,18 +6,18 @@
 <form method="post" enctype="multipart/form-data">
   <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
   <div class="card">
-    <h3>The food (3 stars)</h3>
+    <h3>The food (3 <span style="color:#c9a227">gold</span> stars)</h3>
     <label style="font-weight:normal"><input type="checkbox" name="course1"
-      {% if r and r['course_stars'] >= 1 %}checked{% endif %}> ⭐ First course was good</label>
+      {% if r and r['course_stars'] >= 1 %}checked{% endif %}> <span style="color:#c9a227">★</span> First course was good</label>
     <label style="font-weight:normal"><input type="checkbox" name="course2"
-      {% if r and r['course_stars'] >= 2 %}checked{% endif %}> ⭐ Second course was good</label>
+      {% if r and r['course_stars'] >= 2 %}checked{% endif %}> <span style="color:#c9a227">★</span> Second course was good</label>
     <label style="font-weight:normal"><input type="checkbox" name="course3"
-      {% if r and r['course_stars'] >= 3 %}checked{% endif %}> ⭐ Third course was good</label>
-    <h3>The vibes (2 stars)</h3>
+      {% if r and r['course_stars'] >= 3 %}checked{% endif %}> <span style="color:#c9a227">★</span> Third course was good</label>
+    <h3>Hospitality &amp; vibes (2 <span style="color:#8e9aa8">silver</span> stars)</h3>
     <label style="font-weight:normal"><input type="checkbox" name="vibe_hosts"
-      {% if r and r['vibe_stars'] >= 1 %}checked{% endif %}> ⭐ The hosts were great</label>
+      {% if r and r['vibe_stars'] >= 1 %}checked{% endif %}> <span style="color:#8e9aa8">★</span> The hosts were great</label>
     <label style="font-weight:normal"><input type="checkbox" name="vibe_college"
-      {% if r and r['vibe_stars'] >= 2 %}checked{% endif %}> ⭐ Beautiful college &amp; atmosphere</label>
+      {% if r and r['vibe_stars'] >= 2 %}checked{% endif %}> <span style="color:#8e9aa8">★</span> Beautiful college &amp; atmosphere</label>
   </div>
   <label>Your review (optional)</label>
   <textarea name="review" rows="5" style="width:100%;max-width:32rem;padding:.45rem;border:1px solid #b8c4d0;border-radius:5px;font-size:1rem" placeholder="How was it?">{{ r['review'] if r else '' }}</textarea>

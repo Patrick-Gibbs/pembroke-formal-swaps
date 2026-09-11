@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS formals (
     status TEXT NOT NULL DEFAULT 'open',  -- open | allocated | cancelled
     location TEXT NOT NULL DEFAULT '',      -- meeting point / address for calendar
     instructions TEXT NOT NULL DEFAULT '',  -- dress code, payment, arrival time...
+    host_name TEXT NOT NULL DEFAULT '',     -- host college contact (admin-only)
+    host_email TEXT NOT NULL DEFAULT '',
+    host_phone TEXT NOT NULL DEFAULT '',
     reminder_sent INTEGER NOT NULL DEFAULT 0,   -- 9am day-of email done
     review_sent INTEGER NOT NULL DEFAULT 0,     -- 9pm review request done
     created_at TEXT NOT NULL DEFAULT (datetime('now'))

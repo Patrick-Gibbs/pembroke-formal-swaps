@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Roster — {{ f['host_college'] }} ({{ f['dt'] }})</h1>
+{% if f['host_name'] or f['host_email'] or f['host_phone'] %}
+<p class="note">Host contact (internal):
+  {% if f['host_name'] %}<b>{{ f['host_name'] }}</b>{% endif %}
+  {% if f['host_email'] %} &middot; <a href="mailto:{{ f['host_email'] }}">{{ f['host_email'] }}</a>{% endif %}
+  {% if f['host_phone'] %} &middot; {{ f['host_phone'] }}{% endif %}
+</p>
+{% endif %}
 <p>
   <button class="btn" type="button" onclick="copyTable('copy-roster', this)">📋 Copy for email</button>
   <a class="btn" href="?csv=1">Export CSV (active attendees)</a>

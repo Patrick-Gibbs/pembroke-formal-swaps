@@ -250,8 +250,8 @@ def send_scheduled_emails(conn, send_reminder, send_review, now=None):
     - 09:00 UK on the day of a formal: courtesy reminder to every attendee
       (skipped entirely if the formal has already started when we first check,
       e.g. after prolonged downtime).
-    - 21:00 UK on the day of the formal (and not before the formal's start):
-      review request to every attendee.
+    - 19:30 UK on the day of the formal: review request to every attendee
+      (reviews themselves open from 09:00 that day).
 
     send_reminder(formal_row, [emails]) / send_review(formal_row, [emails])
     do the delivery. Flags are flipped inside an immediate transaction first,
@@ -272,7 +272,7 @@ def send_scheduled_emails(conn, send_reminder, send_review, now=None):
                              "WHERE id=?", (f["id"],))
             continue
         nine = start.replace(hour=9, minute=0, second=0, microsecond=0)
-        nine_pm = start.replace(hour=21, minute=0, second=0, microsecond=0)
+        review_at = start.replace(hour=19, minute=30, second=0, microsecond=0)
         if not f["reminder_sent"] and nine <= now < start:
             with immediate(conn):
                 fresh = conn.execute("SELECT reminder_sent FROM formals WHERE id=?",
@@ -282,7 +282,7 @@ def send_scheduled_emails(conn, send_reminder, send_review, now=None):
                 conn.execute("UPDATE formals SET reminder_sent=1 WHERE id=?", (f["id"],))
             send_reminder(f, attendee_emails(conn, f["id"]))
             fired.append(("reminder", f["id"]))
-        if not f["review_sent"] and now >= max(nine_pm, start):
+        if not f["review_sent"] and now >= review_at:
             with immediate(conn):
                 fresh = conn.execute("SELECT review_sent FROM formals WHERE id=?",
                                      (f["id"],)).fetchone()

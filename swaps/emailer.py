@@ -137,11 +137,14 @@ def no_place_email(to, term):
 
 
 def reminder_email(to, formal, ics_files):
+    review_link = f"{config.SITE_URL}/review/{formal['id']}"
     return send(
         to, f"Today: {formal['host_college']} formal at {formal['dt'][11:16]}",
         f"<p>A friendly reminder — you're going to a formal <b>today</b>:</p>"
         f"{_formal_block(formal)}"
-        f"<p>Have a wonderful evening!</p>",
+        f"<p>Have a wonderful evening! And at the end of the formal, remember "
+        f"to <a href=\"{review_link}\">leave a review</a> — it helps everyone "
+        f"pick next term's swaps.</p>",
         attachments=ics_files)
 
 

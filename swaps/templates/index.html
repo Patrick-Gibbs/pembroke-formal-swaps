@@ -70,13 +70,17 @@
       <td>{% if f['status'] == 'allocated' %}{{ free_seats[f['id']] }}{% else %}—{% endif %}</td>
       <td>
         {% if user %}
-          {% if f['status'] == 'allocated' and free_seats[f['id']] > 0 %}
+          {% if f['id'] in attending %}
+            <span class="btn" style="background:#b8c1cb;cursor:default" title="You have a place at this formal">Attending ✓</span>
+          {% elif f['status'] == 'allocated' and free_seats[f['id']] > 0 %}
             <a class="btn" href="/formals/{{ f['id'] }}/claim">Claim</a>
           {% endif %}
+          {% if f['id'] not in attending %}
           <form class="inline" method="post" action="/formals/{{ f['id'] }}/subscribe">
             <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
             <button class="small ghost">Notify me</button>
           </form>
+          {% endif %}
         {% endif %}
       </td>
     </tr>

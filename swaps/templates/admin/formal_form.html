@@ -13,6 +13,13 @@
   <input type="text" name="location" placeholder="e.g. Queens' College Old Hall — meet at the Porters' Lodge" value="{{ f['location'] if f else '' }}">
   <label>Instructions (dress code, arrival time, payment — email + calendar)</label>
   <textarea name="instructions" rows="4" style="width:100%;max-width:26rem;padding:.45rem;border:1px solid #b8c4d0;border-radius:5px;font-size:1rem">{{ f['instructions'] if f else '' }}</textarea>
+  <h3>Host college contact (internal — never shown to members)</h3>
+  <label>Host contact name</label>
+  <input type="text" name="host_name" placeholder="e.g. Jane Smith, Catering Manager" value="{{ f['host_name'] if f else '' }}">
+  <label>Host contact email</label>
+  <input type="email" name="host_email" value="{{ f['host_email'] if f else '' }}">
+  <label>Host contact phone</label>
+  <input type="text" name="host_phone" value="{{ f['host_phone'] if f else '' }}">
   <label>Number of slots</label>
   <input type="number" name="slots" min="1" required value="{{ f['slots'] if f else 10 }}">
   <label>Term</label>

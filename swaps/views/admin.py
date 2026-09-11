@@ -118,7 +118,10 @@ def _formal_from_form():
             request.form.get("ballot_close", "").replace("T", " ").strip(),
             request.form.get("status", "open"),
             request.form.get("location", "").strip()[:300],
-            request.form.get("instructions", "").strip()[:2000])
+            request.form.get("instructions", "").strip()[:2000],
+            request.form.get("host_name", "").strip()[:120],
+            request.form.get("host_email", "").strip()[:200],
+            request.form.get("host_phone", "").strip()[:50])
 
 
 @bp.route("/formals/new", methods=["GET", "POST"])
@@ -131,8 +134,9 @@ def formal_new():
             flash("College, date/time and a positive slot count are required.", "error")
         else:
             db.execute("INSERT INTO formals(host_college, dt, price, slots, term, "
-                       "ballot_open, ballot_close, status, location, instructions) "
-                       "VALUES (?,?,?,?,?,?,?,?,?,?)", vals)
+                       "ballot_open, ballot_close, status, location, instructions, "
+                       "host_name, host_email, host_phone) "
+                       "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", vals)
             audit(db, "admin", "formal_create", f"{vals[0]} {vals[1]}")
             flash("Formal created.", "ok")
             return redirect(url_for("admin.dashboard"))
@@ -152,7 +156,8 @@ def formal_edit(fid):
         vals = _formal_from_form()
         db.execute("UPDATE formals SET host_college=?, dt=?, price=?, slots=?, term=?, "
                    "ballot_open=?, ballot_close=?, status=?, location=?, "
-                   "instructions=? WHERE id=?", vals + (fid,))
+                   "instructions=?, host_name=?, host_email=?, host_phone=? "
+                   "WHERE id=?", vals + (fid,))
         audit(db, "admin", "formal_edit", f"id={fid} {vals[0]} {vals[1]}")
         flash("Saved.", "ok")
         return redirect(url_for("admin.dashboard"))

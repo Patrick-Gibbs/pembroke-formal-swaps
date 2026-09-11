@@ -60,26 +60,25 @@ def test_reminder_only_in_window_and_once(db):
 
 
 def test_no_reminder_if_formal_already_started(db):
-    _setup(db, "2030-05-10 19:30")
-    assert collect(db, datetime(2030, 5, 10, 20, 0)) == {
-        "reminder": [], "review": []}  # 8pm: reminder window missed, review not due
+    _setup(db, "2030-05-10 18:00")
+    # 19:00: formal started, reminder window missed; review due at 19:30 not yet
+    assert collect(db, datetime(2030, 5, 10, 19, 0)) == {
+        "reminder": [], "review": []}
 
 
-def test_review_at_9pm_once(db):
+def test_review_at_1930_once(db):
     _setup(db, "2030-05-10 19:30")
     day = datetime(2030, 5, 10)
-    assert collect(db, day.replace(hour=20, minute=59)) == {"reminder": [], "review": []}
-    assert collect(db, day.replace(hour=21)) == {
+    assert collect(db, day.replace(hour=19, minute=29)) == {
+        "reminder": [["u1@pem.cam.ac.uk"]], "review": []}  # reminder pre-start
+    assert collect(db, day.replace(hour=19, minute=30)) == {
         "reminder": [], "review": [["u1@pem.cam.ac.uk"]]}
     assert collect(db, day.replace(hour=22)) == {"reminder": [], "review": []}
 
 
-def test_late_formal_review_waits_for_start(db):
+def test_review_fires_at_1930_even_for_late_formal(db):
     _setup(db, "2030-05-10 21:45")
     day = datetime(2030, 5, 10)
-    # 21:00, formal at 21:45: reminder still goes (formal not started); the
-    # review request must NOT fire before the formal has begun.
-    assert collect(db, day.replace(hour=21)) == {
-        "reminder": [["u1@pem.cam.ac.uk"]], "review": []}
-    sent = collect(db, day.replace(hour=21, minute=50))
-    assert sent == {"reminder": [], "review": [["u1@pem.cam.ac.uk"]]}
+    sent = collect(db, day.replace(hour=19, minute=35))
+    assert sent == {"reminder": [["u1@pem.cam.ac.uk"]],
+                    "review": [["u1@pem.cam.ac.uk"]]}

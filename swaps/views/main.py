@@ -49,7 +49,14 @@ def index():
     t_open = get_setting(db, "term_ballot_open")
     t_close = get_setting(db, "term_ballot_close")
     opens_soon = bool(t_open) and local_now() < parse_local(t_open)
+    user = current_user()
+    attending = set()
+    if user:
+        attending = {r["formal_id"] for r in db.execute(
+            "SELECT formal_id FROM allocations WHERE user_id=? AND status='active'",
+            (user["id"],)).fetchall()}
     return render_template("index.html", formals=formals, term=term,
+                           attending=attending,
                            ballot_open=_ballot_window(db, term) if term else False,
                            ballot_closes=t_close, ballot_opens=t_open,
                            opens_soon=opens_soon,
@@ -246,8 +253,9 @@ def review(formal_id):
     if not attended:
         flash("Only attendees of a formal can review it.", "error")
         return redirect(url_for("main.reviews_page"))
-    if parse_local(f["dt"]) > local_now():
-        flash("You can review after the formal has happened.", "error")
+    opens = parse_local(f["dt"]).replace(hour=9, minute=0, second=0, microsecond=0)
+    if local_now() < opens:
+        flash("Reviews open at 9am on the day of the formal.", "error")
         return redirect(url_for("main.me"))
 
     existing = db.execute("SELECT * FROM reviews WHERE user_id=? AND formal_id=?",

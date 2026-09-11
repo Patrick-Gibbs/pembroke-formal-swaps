@@ -31,7 +31,10 @@ def init_db(db_path=None):
     for col, ddl in [("location", "TEXT NOT NULL DEFAULT ''"),
                      ("instructions", "TEXT NOT NULL DEFAULT ''"),
                      ("reminder_sent", "INTEGER NOT NULL DEFAULT 0"),
-                     ("review_sent", "INTEGER NOT NULL DEFAULT 0")]:
+                     ("review_sent", "INTEGER NOT NULL DEFAULT 0"),
+                     ("host_name", "TEXT NOT NULL DEFAULT ''"),
+                     ("host_email", "TEXT NOT NULL DEFAULT ''"),
+                     ("host_phone", "TEXT NOT NULL DEFAULT ''")]:
         if col not in cols:
             conn.execute(f"ALTER TABLE formals ADD COLUMN {col} {ddl}")
     acols = {r["name"] for r in conn.execute("PRAGMA table_info(allocations)")}
