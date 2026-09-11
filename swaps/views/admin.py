@@ -121,7 +121,31 @@ def _formal_from_form():
             request.form.get("instructions", "").strip()[:2000],
             request.form.get("host_name", "").strip()[:120],
             request.form.get("host_email", "").strip()[:200],
-            request.form.get("host_phone", "").strip()[:50])
+            request.form.get("host_phone", "").strip()[:50],
+            _parse_endowment(request.form.get("endowment_m", "")))
+
+
+def _parse_endowment(raw):
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return None
+
+
+def _remember_endowment(db, college, endowment_m):
+    """Upsert the college's endowment so it autofills next time."""
+    if college and endowment_m is not None:
+        db.execute("INSERT INTO college_endowments(college, endowment_m) "
+                   "VALUES (?,?) ON CONFLICT(college) DO UPDATE SET "
+                   "endowment_m=excluded.endowment_m", (college, endowment_m))
+
+
+def _endowment_map(db):
+    return {r["college"]: r["endowment_m"] for r in db.execute(
+        "SELECT college, endowment_m FROM college_endowments ORDER BY college")}
 
 
 @bp.route("/formals/new", methods=["GET", "POST"])
@@ -135,13 +159,15 @@ def formal_new():
         else:
             db.execute("INSERT INTO formals(host_college, dt, price, slots, term, "
                        "ballot_open, ballot_close, status, location, instructions, "
-                       "host_name, host_email, host_phone) "
-                       "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", vals)
+                       "host_name, host_email, host_phone, endowment_m) "
+                       "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", vals)
+            _remember_endowment(db, vals[0], vals[13])
             audit(db, "admin", "formal_create", f"{vals[0]} {vals[1]}")
             flash("Formal created.", "ok")
             return redirect(url_for("admin.dashboard"))
     return render_template("admin/formal_form.html", f=None,
-                           default_term=get_setting(db, "current_term"))
+                           default_term=get_setting(db, "current_term"),
+                           endowments=_endowment_map(db))
 
 
 @bp.route("/formals/<int:fid>/edit", methods=["GET", "POST"])
@@ -156,12 +182,14 @@ def formal_edit(fid):
         vals = _formal_from_form()
         db.execute("UPDATE formals SET host_college=?, dt=?, price=?, slots=?, term=?, "
                    "ballot_open=?, ballot_close=?, status=?, location=?, "
-                   "instructions=?, host_name=?, host_email=?, host_phone=? "
-                   "WHERE id=?", vals + (fid,))
+                   "instructions=?, host_name=?, host_email=?, host_phone=?, "
+                   "endowment_m=? WHERE id=?", vals + (fid,))
+        _remember_endowment(db, vals[0], vals[13])
         audit(db, "admin", "formal_edit", f"id={fid} {vals[0]} {vals[1]}")
         flash("Saved.", "ok")
         return redirect(url_for("admin.dashboard"))
-    return render_template("admin/formal_form.html", f=f, default_term=f["term"])
+    return render_template("admin/formal_form.html", f=f, default_term=f["term"],
+                           endowments=_endowment_map(db))
 
 
 @bp.route("/formals/<int:fid>/delete", methods=["POST"])

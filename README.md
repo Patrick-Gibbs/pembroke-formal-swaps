@@ -39,7 +39,7 @@ somewhere discoverable (e.g. the footer).
   members by name with live autocomplete; invitees accept/decline on-site or
   via the emailed link. The group enters the ballot as one block with the
   leader's ranking — all seated together or not at all. One group per member
-  per term; the smallest member's max-places cap applies to the group.
+  per term; the leader's max-places cap applies to the group.
 - **Results by email** on publish: each winner gets all their formals with
   **.ics calendar invitations attached** (one tap adds the event, with
   location, instructions, price, and a 2-hour-before alarm); entrants who got
@@ -53,12 +53,14 @@ somewhere discoverable (e.g. the footer).
   straight to a friend), then all subscribers are emailed a claim link.
 - **Slot alerts**: "Notify me" on any formal emails you when a place opens.
   **Claiming is atomic** — two people can't both take the last seat.
-- **Day-of emails**: 9:00 UK reminder with details + calendar file; 21:00
-  review request.
+- **Day-of emails**: 9:00 UK reminder (with details, calendar file, and a
+  nudge to review afterwards); 19:30 review request.
 - **Reviews** (`/reviews`, public): rate a formal out of 5 stars — one per
-  good course (3) plus hosts & atmosphere (2) — with optional text and photo.
-  The page shows every review plus each college's **mean ± standard
-  deviation**.
+  good course (3, shown gold) plus hosts & atmosphere (2, shown silver) — with
+  optional text and photo; reviews open from 9:00 on the day. The page shows
+  every review, each college's **mean ± standard deviation**, and two
+  live-updating charts: average rating by college (± standard error, ordered
+  worst→best) and average rating vs college endowment (log₁₀ scale).
 - **Incoming swaps** (`/incoming`): public schedule of colleges visiting you,
   with guest names only.
 
@@ -68,8 +70,10 @@ Separate login (`/admin/login`) with a **long argon2id-hashed password** (not
 a PIN), its own rate-limit bucket, and a full audit log.
 
 - **Formals CRUD**: host college, date/time, price, slots, term, location and
-  instructions (flow into calendar invites and reminder emails), optional
-  per-formal ballot window override.
+  instructions (flow into calendar invites and reminder emails), internal host
+  contact (name/email/phone — never shown to members), host college endowment
+  (£m — autofills from a seeded table of Cambridge colleges, editable, feeds
+  the reviews charts), and optional per-formal ballot window override.
 - **Settings**: current term, term-wide **ballot open/close** (the close time
   is public with a countdown), attendee-list visibility, **cancellation
   cut-off hours**.
@@ -107,7 +111,7 @@ A worker thread inside the app process, every 30 s:
 
 - opens due released slots and emails that formal's subscribers;
 - sends the 9:00 day-of reminders (skipped if the formal already started);
-- sends the 21:00 review requests (never before the formal starts);
+- sends the 19:30 review requests;
 - all exactly-once, guarded by DB transactions.
 
 ### Allocation algorithm (the important bit)
@@ -127,7 +131,7 @@ A **preference-honouring random ballot with fairness rounds**:
 4. You end up with nothing only if everything you ranked filled up (or never
    had enough adjacent seats for your group).
 5. Personal caps (1–3) limit how many formals the ballot hands a unit;
-   groups use the smallest member's cap. Caps apply to the ballot only.
+   groups use the leader's cap. Caps apply to the ballot only.
 6. Every run records its **seed** and a log of every lottery; re-running with
    the same seed and data is byte-identical. Re-runs only fill seats — they
    never revoke existing places.

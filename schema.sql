@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS formals (
     host_name TEXT NOT NULL DEFAULT '',     -- host college contact (admin-only)
     host_email TEXT NOT NULL DEFAULT '',
     host_phone TEXT NOT NULL DEFAULT '',
+    endowment_m REAL,                       -- host college endowment £m (nullable)
     reminder_sent INTEGER NOT NULL DEFAULT 0,   -- 9am day-of email done
     review_sent INTEGER NOT NULL DEFAULT 0,     -- 9pm review request done
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -98,6 +99,23 @@ CREATE TABLE IF NOT EXISTS audit_log (
     action TEXT NOT NULL,
     detail TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS college_endowments (
+    college TEXT PRIMARY KEY COLLATE NOCASE,
+    endowment_m REAL NOT NULL          -- endowment in £ millions
+);
+-- Seed: Cambridge college endowments (£m), for autofill suggestions. Editable
+-- by the admin (saving a formal upserts the value used).
+INSERT OR IGNORE INTO college_endowments(college, endowment_m) VALUES
+  ('Trinity', 2020), ('St John''s', 674), ('King''s', 340),
+  ('Gonville & Caius', 271), ('Peterhouse', 238.6), ('Jesus', 236),
+  ('Clare', 187.5), ('Emmanuel', 143), ('Pembroke', 139), ('Christ''s', 122),
+  ('Queens''', 120), ('Homerton', 119), ('Corpus Christi', 100),
+  ('Trinity Hall', 89), ('Fitzwilliam', 77), ('Newnham', 74),
+  ('Magdalene', 74), ('St Catharine''s', 74), ('Girton', 73), ('Selwyn', 55),
+  ('Murray Edwards', 54), ('Downing', 44), ('Churchill', 37), ('Wolfson', 32),
+  ('Sidney Sussex', 31), ('Robinson', 30), ('Darwin', 25), ('Clare Hall', 21),
+  ('St Edmund''s', 19), ('Lucy Cavendish', 14), ('Hughes Hall', 8);
 
 CREATE TABLE IF NOT EXISTS reviews (
     id INTEGER PRIMARY KEY,

@@ -4,7 +4,16 @@
 <form method="post">
   <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
   <label>Host college</label>
-  <input type="text" name="host_college" required value="{{ f['host_college'] if f else '' }}">
+  <input type="text" name="host_college" id="host_college" list="college_list"
+         required value="{{ f['host_college'] if f else '' }}" autocomplete="off">
+  <datalist id="college_list">
+    {% for c in endowments %}<option value="{{ c }}">{% endfor %}
+  </datalist>
+  <label>Host college endowment (£m — used in the reviews charts)</label>
+  <input type="number" name="endowment_m" id="endowment_m" step="0.1" min="0"
+         placeholder="autofills for known colleges"
+         value="{{ f['endowment_m'] if f and f['endowment_m'] is not none else '' }}">
+  <p class="muted" id="endow_hint"></p>
   <label>Date &amp; time (UK time)</label>
   <input type="datetime-local" name="dt" required value="{{ (f['dt'].replace(' ', 'T')) if f else '' }}">
   <label>Price info</label>
@@ -40,4 +49,29 @@
   <p class="muted">“open” = accepting rankings; “allocated” = ballot has run (claims possible); “cancelled” = hidden.</p>
   <p><button>Save</button> <a class="btn ghost" href="/admin/">Back</a></p>
 </form>
+<script>
+(function () {
+  const known = {{ endowments|tojson }};
+  const college = document.getElementById('host_college');
+  const endow = document.getElementById('endowment_m');
+  const hint = document.getElementById('endow_hint');
+  let autofilled = endow.value === '';   // don't clobber a value the admin typed
+  function apply() {
+    const v = known[college.value.trim()];
+    if (v !== undefined && (endow.value === '' || autofilled)) {
+      endow.value = v;
+      autofilled = true;
+      hint.textContent = 'Suggested endowment for ' + college.value.trim() +
+        ' — edit if you have a newer figure.';
+    } else if (v === undefined) {
+      hint.textContent = college.value.trim()
+        ? 'No stored endowment for this college — enter one and it’ll be remembered.'
+        : '';
+    }
+  }
+  college.addEventListener('input', apply);
+  endow.addEventListener('input', () => { autofilled = false; });
+  apply();
+})();
+</script>
 {% endblock %}

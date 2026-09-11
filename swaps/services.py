@@ -134,7 +134,7 @@ def run_allocation(conn, term, seed=None, actor="admin"):
                 unit_prefs[uid] = plist
                 unit_sizes[uid] = len(members)
                 unit_members[uid] = members
-                unit_caps[uid] = min(remaining_cap(m) for m in members)
+                unit_caps[uid] = remaining_cap(g["leader_user_id"])
         for u, plist in raw_prefs.items():
             if u in grouped_users:
                 continue  # a group member's personal ranking is inert

@@ -115,7 +115,7 @@ def test_caps_limit_extra_places():
     assert got["u:1"] == 1 and got["u:2"] == 3
 
 
-def test_group_cap_is_min_of_members(db):
+def test_group_cap_uses_leaders_limit(db):
     for uid in (1, 2, 3):
         add_user(db, uid)
     add_formal(db, 1, slots=4, term="T1")
@@ -125,8 +125,9 @@ def test_group_cap_is_min_of_members(db):
     for uid in (1, 2):
         db.execute("INSERT INTO ballot_group_members(group_id, user_id, status) "
                    "VALUES (1, ?, 'accepted')", (uid,))
-    # member 2 is only happy with 1 swap -> group capped at 1
-    db.execute("INSERT INTO ballot_caps(user_id, term, max_places) VALUES (2,'T1',1)")
+    # Leader (1) caps at 1; member 2 would allow 3 -> LEADER'S cap of 1 wins.
+    db.execute("INSERT INTO ballot_caps(user_id, term, max_places) VALUES (1,'T1',1)")
+    db.execute("INSERT INTO ballot_caps(user_id, term, max_places) VALUES (2,'T1',3)")
     for rank, fid in enumerate([1, 2], 1):
         db.execute("INSERT INTO preferences(user_id, formal_id, rank, term) "
                    "VALUES (1, ?, ?, 'T1')", (fid, rank))

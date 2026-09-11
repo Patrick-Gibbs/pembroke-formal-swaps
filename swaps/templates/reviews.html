@@ -2,6 +2,103 @@
 {% block title %}Reviews — Pembroke Formal Swaps{% endblock %}
 {% block content %}
 <h1>Formal reviews</h1>
+
+<div class="card" id="charts-card" style="display:none">
+  <h3>Ratings at a glance</h3>
+  <figure style="margin:0 0 1.4rem">
+    <figcaption class="muted" style="margin-bottom:.3rem"><b>Average rating by college</b>
+      — out of 5, ± standard error; ordered worst → best (best on the right).</figcaption>
+    <div style="overflow-x:auto"><svg id="chart-rank" viewBox="0 0 760 380"
+      style="width:100%;min-width:520px;font-family:Georgia,serif"></svg></div>
+  </figure>
+  <figure style="margin:0">
+    <figcaption class="muted" style="margin-bottom:.3rem"><b>Rating vs college wealth</b>
+      — average stars (± standard error) against endowment on a log₁₀ scale (£m).</figcaption>
+    <div style="overflow-x:auto"><svg id="chart-endow" viewBox="0 0 760 380"
+      style="width:100%;min-width:520px;font-family:Georgia,serif"></svg></div>
+  </figure>
+</div>
+<script>
+const STAR = '#c9a227', INK = '#1c2430', MUT = '#5b6b7c', GRID = '#e3e8ee', BAR = '#003b6f';
+function svgEl(t, a) { const e = document.createElementNS('http://www.w3.org/2000/svg', t);
+  for (const k in a) e.setAttribute(k, a[k]); return e; }
+function clear(s) { while (s.firstChild) s.removeChild(s.firstChild); }
+function txt(s, x, y, str, o = {}) {
+  const t = svgEl('text', Object.assign({x, y, fill: o.fill || INK,
+    'font-size': o.size || 13, 'text-anchor': o.anchor || 'middle'}, o.rot ?
+    {transform: `rotate(${o.rot} ${x} ${y})`} : {}));
+  t.textContent = str; s.appendChild(t); return t;
+}
+const W = 760, H = 380, L = 46, R = 18, T = 26, B = 96, PW = W - L - R, PH = H - T - B;
+function yAxis(s) {
+  for (let v = 0; v <= 5; v++) {
+    const y = T + PH - (v / 5) * PH;
+    s.appendChild(svgEl('line', {x1: L, y1: y, x2: L + PW, y2: y,
+      stroke: GRID, 'stroke-width': v === 0 ? 1.5 : 1}));
+    txt(s, L - 8, y + 4, v, {anchor: 'end', fill: MUT, size: 12});
+  }
+  txt(s, 14, T + PH / 2, '★ average', {anchor: 'middle', fill: MUT, size: 12,
+    rot: -90});
+}
+function errBar(s, x, mean, lo, hi, half) {
+  const yq = v => T + PH - (Math.max(0, Math.min(5, v)) / 5) * PH;
+  s.appendChild(svgEl('line', {x1: x, y1: yq(lo), x2: x, y2: yq(hi),
+    stroke: MUT, 'stroke-width': 2}));
+  for (const v of [lo, hi]) s.appendChild(svgEl('line', {x1: x - half, y1: yq(v),
+    x2: x + half, y2: yq(v), stroke: MUT, 'stroke-width': 2}));
+}
+function drawRank(data) {
+  const s = document.getElementById('chart-rank'); clear(s);
+  const d = data.slice().sort((a, b) => a.mean - b.mean);
+  yAxis(s);
+  const step = PW / d.length, bw = Math.min(46, step * 0.6);
+  d.forEach((c, i) => {
+    const x = L + step * (i + 0.5), h = (c.mean / 5) * PH, y = T + PH - h;
+    s.appendChild(svgEl('rect', {x: x - bw / 2, y, width: bw, height: h,
+      rx: 4, fill: BAR}));
+    errBar(s, x, c.mean, c.mean - c.se, c.mean + c.se, Math.min(7, bw / 3));
+    txt(s, x, y - 8, c.mean.toFixed(1), {size: 12, fill: INK});
+    txt(s, x, T + PH + 16, c.college, {anchor: 'end', fill: MUT, size: 12, rot: -35});
+  });
+}
+function drawEndow(data) {
+  const s = document.getElementById('chart-endow'); clear(s);
+  const d = data.filter(c => c.endowment_m && c.endowment_m > 0);
+  yAxis(s);
+  if (!d.length) { txt(s, W / 2, H / 2, 'No endowment data yet', {fill: MUT}); return; }
+  const xs = d.map(c => Math.log10(c.endowment_m));
+  let lo = Math.min(...xs), hi = Math.max(...xs);
+  if (lo === hi) { lo -= 0.5; hi += 0.5; } else { const p = (hi - lo) * 0.12; lo -= p; hi += p; }
+  const xq = v => L + ((v - lo) / (hi - lo)) * PW;
+  // x gridlines at integer powers of 10
+  for (let e = Math.ceil(lo); e <= Math.floor(hi); e++) {
+    const x = xq(e);
+    s.appendChild(svgEl('line', {x1: x, y1: T, x2: x, y2: T + PH, stroke: GRID, 'stroke-width': 1}));
+    txt(s, x, T + PH + 18, '£' + Math.pow(10, e).toLocaleString() + 'm', {fill: MUT, size: 11});
+  }
+  txt(s, L + PW / 2, H - 30, 'Endowment (log scale)', {fill: MUT, size: 12});
+  d.forEach(c => {
+    const x = xq(Math.log10(c.endowment_m));
+    errBar(s, x, c.mean, c.mean - c.se, c.mean + c.se, 5);
+    const y = T + PH - (c.mean / 5) * PH;
+    s.appendChild(svgEl('circle', {cx: x, cy: y, r: 5.5, fill: BAR,
+      stroke: '#fff', 'stroke-width': 1.5}));
+    txt(s, x, y - 10, c.college, {size: 11, fill: INK});
+  });
+}
+async function loadCharts() {
+  try {
+    const data = await (await fetch('/reviews/data.json')).json();
+    const card = document.getElementById('charts-card');
+    if (!data.length) { card.style.display = 'none'; return; }
+    card.style.display = '';
+    drawRank(data); drawEndow(data);
+  } catch (e) { /* leave last render */ }
+}
+loadCharts();
+setInterval(loadCharts, 20000);
+</script>
+
 {% if stats %}
 <div class="card">
   <h3>College ratings</h3>

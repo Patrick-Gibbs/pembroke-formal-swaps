@@ -34,7 +34,8 @@ def init_db(db_path=None):
                      ("review_sent", "INTEGER NOT NULL DEFAULT 0"),
                      ("host_name", "TEXT NOT NULL DEFAULT ''"),
                      ("host_email", "TEXT NOT NULL DEFAULT ''"),
-                     ("host_phone", "TEXT NOT NULL DEFAULT ''")]:
+                     ("host_phone", "TEXT NOT NULL DEFAULT ''"),
+                     ("endowment_m", "REAL")]:
         if col not in cols:
             conn.execute(f"ALTER TABLE formals ADD COLUMN {col} {ddl}")
     acols = {r["name"] for r in conn.execute("PRAGMA table_info(allocations)")}

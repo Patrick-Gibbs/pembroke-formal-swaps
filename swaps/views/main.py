@@ -296,6 +296,28 @@ def review(formal_id):
     return render_template("review_form.html", f=f, r=existing)
 
 
+def _college_stats(db):
+    """Per-college rating stats joined to endowment, for the charts + table."""
+    rows = db.execute(
+        "SELECT f.host_college AS college, r.course_stars + r.vibe_stars AS score "
+        "FROM reviews r JOIN formals f ON f.id = r.formal_id").fetchall()
+    endow = {r["college"]: r["endowment_m"] for r in db.execute(
+        "SELECT college, endowment_m FROM college_endowments")}
+    by_college = {}
+    for r in rows:
+        by_college.setdefault(r["college"], []).append(r["score"])
+    out = []
+    for college, scores in by_college.items():
+        n = len(scores)
+        mean = statistics.mean(scores)
+        sd = statistics.stdev(scores) if n > 1 else 0.0
+        se = sd / (n ** 0.5) if n > 1 else 0.0
+        out.append({"college": college, "n": n, "mean": round(mean, 3),
+                    "sd": round(sd, 3), "se": round(se, 3),
+                    "endowment_m": endow.get(college)})
+    return out
+
+
 @bp.route("/reviews")
 def reviews_page():
     db = get_db()
@@ -303,17 +325,15 @@ def reviews_page():
         "SELECT r.*, f.host_college, f.dt, u.first_name, u.last_name "
         "FROM reviews r JOIN formals f ON f.id = r.formal_id "
         "JOIN users u ON u.id = r.user_id ORDER BY r.created_at DESC").fetchall()
-    by_college = {}
-    for r in rows:
-        by_college.setdefault(r["host_college"], []).append(
-            r["course_stars"] + r["vibe_stars"])
-    stats = []
-    for college, scores in by_college.items():
-        mean = statistics.mean(scores)
-        sd = statistics.stdev(scores) if len(scores) > 1 else 0.0
-        stats.append((college, mean, sd, len(scores)))
-    stats.sort(key=lambda s: -s[1])
+    stats = [(s["college"], s["mean"], s["sd"], s["n"])
+             for s in sorted(_college_stats(db), key=lambda s: -s["mean"])]
     return render_template("reviews.html", rows=rows, stats=stats)
+
+
+@bp.route("/reviews/data.json")
+def reviews_data():
+    from flask import jsonify
+    return jsonify(_college_stats(get_db()))
 
 
 @bp.route("/photos/<path:name>")
