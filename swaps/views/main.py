@@ -1,6 +1,7 @@
 import os
 import secrets
 import statistics
+import threading
 
 from flask import (Blueprint, abort, flash, redirect, render_template, request,
                    send_from_directory, url_for)
@@ -174,6 +175,12 @@ def rank():
                            ballot_closes=get_setting(db, "term_ballot_close"))
 
 
+# CPU guard for the single-core VM: the simulation is CPU-bound, so cap it at
+# one at a time. During a stampede (many users clicking near ballot close) extra
+# requests get an instant "busy" instead of piling work onto the one core.
+_SIM_SEMAPHORE = threading.BoundedSemaphore(1)
+
+
 @bp.route("/simulate")
 @login_required
 def simulate():
@@ -183,7 +190,13 @@ def simulate():
     term = get_setting(db, "current_term")
     if not term:
         return jsonify({"error": "No term is set up."}), 400
-    result = simulate_user(db, current_user()["id"], term, trials=400)
+    if not _SIM_SEMAPHORE.acquire(blocking=False):
+        return jsonify({"error": "The simulator is busy right now — please try "
+                        "again in a few seconds."}), 429
+    try:
+        result = simulate_user(db, current_user()["id"], term, trials=400)
+    finally:
+        _SIM_SEMAPHORE.release()
     if result is None:
         return jsonify({"error": "Rank at least one formal (and save) first, "
                         "then simulate."}), 400
