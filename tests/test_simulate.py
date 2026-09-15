@@ -80,3 +80,5 @@ def test_group_member_sees_group_outcome(db):
     r = simulate_user(db, 2, "T1", trials=20)  # the non-leader member
     assert r["in_group"] is True
     assert r["first_pref_pct"] == 100
+    # The leader running it sees the SAME group odds, not solo odds.
+    assert simulate_user(db, 1, "T1", trials=20) == r
