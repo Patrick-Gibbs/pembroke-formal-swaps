@@ -174,6 +174,22 @@ def rank():
                            ballot_closes=get_setting(db, "term_ballot_close"))
 
 
+@bp.route("/simulate")
+@login_required
+def simulate():
+    from flask import jsonify
+    from ..services import simulate_user
+    db = get_db()
+    term = get_setting(db, "current_term")
+    if not term:
+        return jsonify({"error": "No term is set up."}), 400
+    result = simulate_user(db, current_user()["id"], term, trials=100)
+    if result is None:
+        return jsonify({"error": "Rank at least one formal (and save) first, "
+                        "then simulate."}), 400
+    return jsonify(result)
+
+
 @bp.route("/attendees")
 def attendees():
     from flask import session

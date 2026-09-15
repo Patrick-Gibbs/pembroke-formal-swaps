@@ -67,6 +67,146 @@ def free_seats(conn, formal_id, slots=None):
 
 # ------------------------------------------------------------------ ballot
 
+def build_ballot_inputs(conn, term):
+    """Assemble the exact inputs the ballot runs on, from current DB state.
+    Returns (capacity, unit_prefs, unit_sizes, unit_caps, unit_members).
+    Shared by run_allocation (real) and simulate_user (read-only preview) so
+    the two can never drift apart."""
+    formals = conn.execute(
+        "SELECT id, slots FROM formals WHERE term=? AND status IN ('open','allocated')",
+        (term,)).fetchall()
+    capacity = {}
+    now = utcnow_str()
+    for f in formals:
+        holds = conn.execute(
+            "SELECT COUNT(*) AS n FROM released_slots "
+            "WHERE formal_id=? AND claimed_by IS NULL AND release_at > ?",
+            (f["id"], now)).fetchone()["n"]
+        taken = conn.execute(
+            "SELECT COUNT(*) AS n FROM allocations WHERE formal_id=? AND status='active'",
+            (f["id"],)).fetchone()["n"]
+        capacity[f["id"]] = max(0, f["slots"] - taken - holds)
+
+    raw_prefs = {}
+    rows = conn.execute(
+        "SELECT p.user_id, p.formal_id FROM preferences p "
+        "JOIN users u ON u.id = p.user_id AND u.email_verified = 1 "
+        "WHERE p.term = ? ORDER BY p.user_id, p.rank", (term,)).fetchall()
+    for r in rows:
+        raw_prefs.setdefault(r["user_id"], []).append(r["formal_id"])
+    held = conn.execute(
+        "SELECT user_id, formal_id FROM allocations WHERE status='active'").fetchall()
+    held_set = {(h["user_id"], h["formal_id"]) for h in held}
+
+    # Personal caps: "max swaps I'm happy to be assigned" (1-3, default 3).
+    # Applies to the ballot ONLY: it limits how many formals this run can hand
+    # someone, but never blocks later claims of released slots. A group uses the
+    # leader's cap.
+    cap_rows = {r["user_id"]: r["max_places"] for r in conn.execute(
+        "SELECT user_id, max_places FROM ballot_caps WHERE term=?",
+        (term,)).fetchall()}
+
+    def remaining_cap(user_id):
+        return cap_rows.get(user_id, 3)
+
+    # Balloting units: a group (accepted members, leader's ranking, block size =
+    # member count) or a solo entrant. A formal any member already attends is
+    # dropped from the unit's list.
+    unit_prefs, unit_sizes, unit_members, unit_caps = {}, {}, {}, {}
+    grouped_users = set()
+    for g in conn.execute("SELECT id, leader_user_id FROM ballot_groups "
+                          "WHERE term=?", (term,)).fetchall():
+        members = [m["user_id"] for m in conn.execute(
+            "SELECT user_id FROM ballot_group_members WHERE group_id=? "
+            "AND status='accepted' ORDER BY user_id", (g["id"],)).fetchall()]
+        if not members:
+            continue
+        grouped_users.update(members)
+        plist = [f for f in raw_prefs.get(g["leader_user_id"], [])
+                 if all((m, f) not in held_set for m in members)]
+        if plist:
+            uid = f"g:{g['id']}"
+            unit_prefs[uid] = plist
+            unit_sizes[uid] = len(members)
+            unit_members[uid] = members
+            unit_caps[uid] = remaining_cap(g["leader_user_id"])
+    for u, plist in raw_prefs.items():
+        if u in grouped_users:
+            continue  # a group member's personal ranking is inert
+        plist = [f for f in plist if (u, f) not in held_set]
+        if plist:
+            unit_prefs[f"u:{u}"] = plist
+            unit_sizes[f"u:{u}"] = 1
+            unit_members[f"u:{u}"] = [u]
+            unit_caps[f"u:{u}"] = remaining_cap(u)
+    return capacity, unit_prefs, unit_sizes, unit_caps, unit_members
+
+
+def unit_id_for_user(unit_members, user_id):
+    for uid, members in unit_members.items():
+        if user_id in members:
+            return uid
+    return None
+
+
+def simulate_user(conn, user_id, term, trials=100):
+    """Run the ballot `trials` times on the CURRENT state (no writes) and
+    report this user's outcomes. Returns a dict, or None if the user isn't a
+    live entrant (no viable ranked formals / not in an entered group)."""
+    capacity, unit_prefs, unit_sizes, unit_caps, unit_members = \
+        build_ballot_inputs(conn, term)
+    uid = unit_id_for_user(unit_members, user_id)
+    if uid is None:
+        return None
+
+    # The user's "first preference" = the first formal on the ranking that
+    # governs their unit (their own if solo; the leader's if in a group).
+    first_pref = unit_prefs[uid][0]
+    college = {r["id"]: r["host_college"] for r in conn.execute(
+        "SELECT id, host_college FROM formals WHERE term=?", (term,)).fetchall()}
+    cap = min(3, unit_caps.get(uid, 3))  # how many swap slots this unit can win
+
+    first_hits = 0
+    total_swaps = 0
+    # slot_counts[k][fid] = # trials the unit won `fid` as its (k+1)-th swap
+    # (its round-(k+1) win). fid None means "no swap in that slot".
+    slot_counts = [{} for _ in range(cap)]
+    for i in range(trials):
+        assignments, _ = run_ballot(capacity, unit_prefs, f"sim-{i}",
+                                    unit_sizes, unit_caps)
+        by_round = {rnd: fid for u, fid, rnd in assignments if u == uid}
+        won = set(by_round.values())
+        if first_pref in won:
+            first_hits += 1
+        total_swaps += len(won)
+        for k in range(cap):
+            fid = by_round.get(k + 1)  # round k+1 = the (k+1)-th swap
+            slot_counts[k][fid] = slot_counts[k].get(fid, 0) + 1
+
+    slots = []
+    for k in range(cap):
+        counts = slot_counts[k]
+        options = sorted(
+            ({"college": college.get(fid, "?"), "pct": round(100 * n / trials)}
+             for fid, n in counts.items() if fid is not None and n),
+            key=lambda o: -o["pct"])
+        slots.append({
+            "n": k + 1,
+            "options": options,
+            "none_pct": round(100 * counts.get(None, 0) / trials),
+        })
+
+    return {
+        "trials": trials,
+        "in_group": uid.startswith("g:"),
+        "first_pref_college": college.get(first_pref, ""),
+        "first_pref_pct": round(100 * first_hits / trials),
+        "expected_total": round(total_swaps / trials, 1),
+        "n_entrants": len(unit_members),
+        "slots": slots,
+    }
+
+
 def run_allocation(conn, term, seed=None, actor="admin"):
     """Run the ballot for every open formal in `term`. Existing active
     allocations keep their seats; the ballot fills remaining capacity for
@@ -74,77 +214,8 @@ def run_allocation(conn, term, seed=None, actor="admin"):
     Returns (run_id, seed, places, log, new_allocs)."""
     seed = seed or secrets.token_hex(8)
     with immediate(conn):
-        formals = conn.execute(
-            "SELECT id, slots FROM formals WHERE term=? AND status IN ('open','allocated')",
-            (term,)).fetchall()
-        capacity = {}
-        for f in formals:
-            now = utcnow_str()
-            holds = conn.execute(
-                "SELECT COUNT(*) AS n FROM released_slots "
-                "WHERE formal_id=? AND claimed_by IS NULL AND release_at > ?",
-                (f["id"], now)).fetchone()["n"]
-            taken = conn.execute(
-                "SELECT COUNT(*) AS n FROM allocations WHERE formal_id=? AND status='active'",
-                (f["id"],)).fetchone()["n"]
-            capacity[f["id"]] = max(0, f["slots"] - taken - holds)
-
-        raw_prefs = {}
-        rows = conn.execute(
-            "SELECT p.user_id, p.formal_id FROM preferences p "
-            "JOIN users u ON u.id = p.user_id AND u.email_verified = 1 "
-            "WHERE p.term = ? ORDER BY p.user_id, p.rank", (term,)).fetchall()
-        for r in rows:
-            raw_prefs.setdefault(r["user_id"], []).append(r["formal_id"])
-        held = conn.execute(
-            "SELECT user_id, formal_id FROM allocations WHERE status='active'").fetchall()
-        held_set = {(h["user_id"], h["formal_id"]) for h in held}
-
-        # Personal caps: "max swaps I'm happy to be assigned" (1-3, default 3).
-        # Applies to the ballot ONLY: it limits how many formals this run can
-        # hand someone, but never blocks later claims of released slots (a
-        # claim is a deliberate act) and ignores places gained outside the
-        # ballot. A group is limited by its most-constrained accepted member.
-        cap_rows = {r["user_id"]: r["max_places"] for r in conn.execute(
-            "SELECT user_id, max_places FROM ballot_caps WHERE term=?",
-            (term,)).fetchall()}
-
-        def remaining_cap(user_id):
-            return cap_rows.get(user_id, 3)
-
-        # Balloting units: a group (accepted members, leader's ranking, block
-        # size = member count) or a solo entrant. A formal any member already
-        # attends is dropped from the unit's list, and nobody may get a second
-        # seat at a formal they already hold.
-        unit_prefs, unit_sizes, unit_members = {}, {}, {}
-        unit_caps = {}
-        grouped_users = set()
-        for g in conn.execute("SELECT id, leader_user_id FROM ballot_groups "
-                              "WHERE term=?", (term,)).fetchall():
-            members = [m["user_id"] for m in conn.execute(
-                "SELECT user_id FROM ballot_group_members WHERE group_id=? "
-                "AND status='accepted' ORDER BY user_id", (g["id"],)).fetchall()]
-            if not members:
-                continue
-            grouped_users.update(members)
-            plist = [f for f in raw_prefs.get(g["leader_user_id"], [])
-                     if all((m, f) not in held_set for m in members)]
-            if plist:
-                uid = f"g:{g['id']}"
-                unit_prefs[uid] = plist
-                unit_sizes[uid] = len(members)
-                unit_members[uid] = members
-                unit_caps[uid] = remaining_cap(g["leader_user_id"])
-        for u, plist in raw_prefs.items():
-            if u in grouped_users:
-                continue  # a group member's personal ranking is inert
-            plist = [f for f in plist if (u, f) not in held_set]
-            if plist:
-                unit_prefs[f"u:{u}"] = plist
-                unit_sizes[f"u:{u}"] = 1
-                unit_members[f"u:{u}"] = [u]
-                unit_caps[f"u:{u}"] = remaining_cap(u)
-
+        capacity, unit_prefs, unit_sizes, unit_caps, unit_members = \
+            build_ballot_inputs(conn, term)
         assignments, log = run_ballot(capacity, unit_prefs, seed, unit_sizes,
                                       unit_caps)
 
