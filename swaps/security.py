@@ -37,11 +37,15 @@ def csrf_token():
     return session["_csrf"]
 
 
+def valid_csrf(sent):
+    good = session.get("_csrf", "")
+    return bool(good) and hmac.compare_digest(sent or "", good)
+
+
 def check_csrf():
-    if request.method == "POST":
-        sent = request.form.get("_csrf", "")
-        good = session.get("_csrf", "")
-        if not good or not hmac.compare_digest(sent, good):
+    # /chat posts JSON and validates the token itself (see views.main.chat).
+    if request.method == "POST" and request.path != "/chat":
+        if not valid_csrf(request.form.get("_csrf", "")):
             abort(400, "CSRF token missing or invalid.")
 
 
@@ -54,6 +58,9 @@ ACCOUNT_THRESHOLD = 5
 BASE_LOCK_MINUTES = 15
 MAX_LOCK_MINUTES = 24 * 60
 IP_LIMIT_PER_HOUR = 20
+CHAT_LIMIT_PER_HOUR = 20      # per-IP
+CHAT_GLOBAL_PER_DAY = 20     # whole platform, last 24h
+CHAT_GLOBAL_PER_WEEK = 100   # whole platform, last 7 days
 
 
 def _utcnow():
@@ -99,6 +106,33 @@ def ip_blocked(conn, kind, ip):
         "WHERE kind=? AND identifier=? AND success=0 AND at > ?",
         (kind, "ip:" + ip, cutoff)).fetchone()
     return row["n"] >= IP_LIMIT_PER_HOUR
+
+
+def _chat_count_since(conn, delta):
+    cutoff = (_utcnow() - delta).strftime("%Y-%m-%d %H:%M:%S")
+    return conn.execute(
+        "SELECT COUNT(*) AS n FROM login_attempts WHERE kind='chat' AND at > ?",
+        (cutoff,)).fetchone()["n"]
+
+
+def chat_global_limited(conn):
+    """True if the whole platform has hit the daily (last 24h) or weekly
+    (last 7 days) chatbot cap. Count only — does not log."""
+    return (_chat_count_since(conn, timedelta(days=1)) >= CHAT_GLOBAL_PER_DAY
+            or _chat_count_since(conn, timedelta(days=7)) >= CHAT_GLOBAL_PER_WEEK)
+
+
+def chat_rate_limited(conn, ip):
+    """True if this IP has hit the hourly chatbot cap. Logs the request either
+    way (reusing the login_attempts table with kind='chat')."""
+    cutoff = (_utcnow() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    row = conn.execute(
+        "SELECT COUNT(*) AS n FROM login_attempts "
+        "WHERE kind='chat' AND identifier=? AND at > ?",
+        ("ip:" + ip, cutoff)).fetchone()
+    conn.execute("INSERT INTO login_attempts(kind, identifier, success) "
+                 "VALUES ('chat', ?, 1)", ("ip:" + ip,))
+    return row["n"] >= CHAT_LIMIT_PER_HOUR
 
 
 def record_attempt(conn, kind, identifier, ip, success):

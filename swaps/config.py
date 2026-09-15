@@ -23,6 +23,9 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "")
 PIN_PEPPER = os.environ.get("PIN_PEPPER", "")
 ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_PASSWORD_HASH", "")
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+CHATBOT_ENABLED = os.environ.get("CHATBOT_ENABLED", "1") == "1"
+CHATBOT_MODEL = os.environ.get("CHATBOT_MODEL", "claude-haiku-4-5")
 MAIL_FROM = os.environ.get("MAIL_FROM", "noreply@pembrokeformalswaps.com")
 EMAIL_MODE = os.environ.get("EMAIL_MODE", "dev")  # 'live' | 'dev'
 SITE_URL = os.environ.get("SITE_URL", "https://pembrokeformalswaps.com")

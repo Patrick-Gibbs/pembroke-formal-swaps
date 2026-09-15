@@ -5,9 +5,10 @@ import statistics
 from flask import (Blueprint, abort, flash, redirect, render_template, request,
                    send_from_directory, url_for)
 
-from .. import config
+from .. import chatbot, config
 from ..db import get_db, get_setting, audit
-from ..security import current_user, login_required
+from ..security import (chat_global_limited, chat_rate_limited, client_ip,
+                        current_user, login_required)
 from ..services import (CancelError, ClaimError, cancel_allocation,
                         cancel_cutoff_hours, claim_seat, free_seats,
                         hours_until_formal, local_now, parse_local)
@@ -382,6 +383,37 @@ def reviews_page():
 def reviews_data():
     from flask import jsonify
     return jsonify(_college_stats(get_db()))
+
+
+@bp.route("/chat", methods=["POST"])
+def chat():
+    from flask import jsonify
+    from ..security import valid_csrf
+    data = request.get_json(silent=True) or {}
+    if not valid_csrf(data.get("_csrf", "")):
+        return jsonify({"error": "Invalid session token — reload the page."}), 400
+    if not chatbot.is_available():
+        return jsonify({"reply": "The chatbot isn't available right now."})
+    message = (data.get("message") or "").strip()[:chatbot.MAX_MESSAGE_CHARS]
+    if not message:
+        return jsonify({"error": "Please enter a question."}), 400
+    # Sanitise short client-supplied history: alternating roles, capped length.
+    history = []
+    for turn in (data.get("history") or [])[-chatbot.MAX_HISTORY_TURNS:]:
+        role = turn.get("role")
+        content = (turn.get("content") or "").strip()[:chatbot.MAX_MESSAGE_CHARS]
+        if role in ("user", "assistant") and content:
+            history.append({"role": role, "content": content})
+
+    db = get_db()
+    if chat_global_limited(db):
+        return jsonify({"reply": "The chat assistant has reached its usage limit "
+                        "for now — please check the formals list on the home "
+                        "page, or try again later."}), 429
+    if chat_rate_limited(db, client_ip()):
+        return jsonify({"reply": "You've reached the hourly limit for the chat "
+                        "assistant — please try again later."}), 429
+    return jsonify({"reply": chatbot.answer(db, message, history)})
 
 
 @bp.route("/photos/<path:name>")

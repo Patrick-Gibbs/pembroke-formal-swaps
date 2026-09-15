@@ -67,6 +67,14 @@ somewhere discoverable (e.g. the footer).
   worst→best) and average rating vs college endowment (log₁₀ scale).
 - **Incoming swaps** (`/incoming`): public schedule of colleges visiting you,
   with guest names only.
+- **Chatbot** (floating "Ask about formals" widget): answers questions about the
+  term's formals ("when is the Trinity Hall formal?") and how the site works,
+  using the smallest Anthropic model (`claude-haiku-4-5`). It has **read-only
+  access to public data only** (it's given no tools — just a server-built
+  context block) and never reveals emails, PINs, dietary details, or host
+  contacts. Optional: hidden unless `ANTHROPIC_API_KEY` is set. Usage bills your
+  Anthropic quota, so it's rate-limited per-IP (20/hour) and platform-wide
+  (20/day, 100/week) — tune the constants in `swaps/security.py`.
 
 ### For the admin
 
@@ -240,7 +248,7 @@ cd /opt/swaps
 git clone <this-repo-url> app        # or scp/rsync the app/ directory
 python3 -m venv venv
 venv/bin/pip install --upgrade pip
-venv/bin/pip install flask waitress argon2-cffi requests Pillow pytest
+venv/bin/pip install flask waitress argon2-cffi requests Pillow anthropic pytest
 ```
 
 > Python note: everything is pure-Python except `argon2-cffi`, which ships
@@ -267,6 +275,8 @@ Edit `/opt/swaps/.env` and fill in every value:
 | `MAIL_FROM` | `noreply@yourdomain.com` |
 | `EMAIL_MODE` | `dev` while testing; **`live`** for production |
 | `SITE_URL` | `https://yourdomain.com` (used in every emailed link) |
+| `ANTHROPIC_API_KEY` | optional — enables the chatbot; billed to your Anthropic quota. Blank = chatbot off |
+| `CHATBOT_ENABLED` | `1` (set `0` to hide the chatbot even with a key set) |
 | `DB_PATH` | `/opt/swaps/data/swaps.db` |
 | `LISTEN_PORT` | `8000` |
 | `TRUST_PROXY` | `1` (behind Caddy) |
@@ -421,7 +431,7 @@ systemctl start swaps
 ## 6. Local development
 
 ```bash
-python3 -m venv venv && venv/bin/pip install flask waitress argon2-cffi requests Pillow pytest
+python3 -m venv venv && venv/bin/pip install flask waitress argon2-cffi requests Pillow anthropic pytest
 cp .env.example .env          # fill in gen-secrets values; EMAIL_MODE=dev
 COOKIE_SECURE=0 SITE_URL=http://127.0.0.1:8000 venv/bin/python wsgi.py
 # browse http://127.0.0.1:8000 — “sent” emails print to the console

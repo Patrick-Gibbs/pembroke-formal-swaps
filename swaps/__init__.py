@@ -2,7 +2,7 @@ import logging
 
 from flask import Flask, session
 
-from . import config
+from . import chatbot, config
 from .db import close_db, get_db, get_setting
 from .security import check_csrf, csrf_token, current_user
 
@@ -41,6 +41,7 @@ def create_app():
             "user": current_user(),
             "is_admin": bool(session.get("is_admin")),
             "current_term": get_setting(get_db(), "current_term"),
+            "chatbot_enabled": chatbot.is_available(),
         }
 
     return app
