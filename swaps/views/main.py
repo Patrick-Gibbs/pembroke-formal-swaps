@@ -203,6 +203,37 @@ def simulate():
     return jsonify(result)
 
 
+@bp.route("/simulate/pair")
+@login_required
+def simulate_pair_route():
+    from flask import jsonify
+    from ..services import simulate_pair
+    db = get_db()
+    term = get_setting(db, "current_term")
+    if not term:
+        return jsonify({"error": "No term is set up."}), 400
+    try:
+        other_id = int(request.args.get("with", ""))
+    except ValueError:
+        return jsonify({"error": "Pick a person from the suggestions."}), 400
+    if other_id == current_user()["id"]:
+        return jsonify({"error": "Pick someone other than yourself."}), 400
+    if db.execute("SELECT 1 FROM users WHERE id=? AND email_verified=1",
+                  (other_id,)).fetchone() is None:
+        return jsonify({"error": "No such registered member."}), 400
+    if not _SIM_SEMAPHORE.acquire(blocking=False):
+        return jsonify({"error": "The simulator is busy right now — please try "
+                        "again in a few seconds."}), 429
+    try:
+        result = simulate_pair(db, current_user()["id"], other_id, term, trials=400)
+    finally:
+        _SIM_SEMAPHORE.release()
+    if result is None:
+        return jsonify({"error": "Rank at least one formal (and save) first, "
+                        "then simulate."}), 400
+    return jsonify(result)
+
+
 @bp.route("/attendees")
 def attendees():
     from flask import session

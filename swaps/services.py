@@ -245,6 +245,60 @@ def simulate_user(conn, user_id, term, trials=400):
     }
 
 
+def simulate_pair(conn, user_id, other_id, term, trials=400):
+    """Probability that `user_id` and `other_id` end up attending the same
+    formal, over `trials` ballot runs on current state. Returns a dict, or None
+    if the requesting user isn't a live entrant."""
+    capacity, unit_prefs, unit_sizes, unit_caps, unit_members = \
+        build_ballot_inputs(conn, term)
+    a = unit_id_for_user(unit_members, user_id)
+    if a is None:
+        return None
+    b = unit_id_for_user(unit_members, other_id)
+    college = {r["id"]: r["host_college"] for r in conn.execute(
+        "SELECT id, host_college FROM formals WHERE term=?", (term,)).fetchall()}
+    other = conn.execute("SELECT first_name, last_name FROM users WHERE id=?",
+                         (other_id,)).fetchone()
+    other_name = f"{other['first_name']} {other['last_name']}" if other else "?"
+
+    if b is None:  # the other person hasn't entered — can't share any formal
+        return {"trials": trials, "other_name": other_name, "other_entered": False,
+                "same_group": False, "together_pct": 0, "together_lo": 0,
+                "together_hi": 0, "shared": []}
+    if a == b:  # same ballot group — they always attend together
+        r = simulate_user(conn, user_id, term, trials=trials)
+        at_least_one = 100 - (r["slots"][0]["none_pct"] if r["slots"] else 100)
+        return {"trials": trials, "other_name": other_name, "other_entered": True,
+                "same_group": True, "together_pct": at_least_one,
+                "together_lo": at_least_one, "together_hi": at_least_one,
+                "shared": [{"college": o["college"], "pct": o["pct"],
+                            "lo": o["lo"], "hi": o["hi"]}
+                           for s in r["slots"] for o in s["options"]]}
+
+    together = 0
+    shared_counts = {}
+    for i in range(trials):
+        assignments, _ = run_ballot(capacity, unit_prefs, f"sim-{i}",
+                                    unit_sizes, unit_caps)
+        a_wins = {fid for u, fid, _ in assignments if u == a}
+        b_wins = {fid for u, fid, _ in assignments if u == b}
+        shared = a_wins & b_wins
+        if shared:
+            together += 1
+        for fid in shared:
+            shared_counts[fid] = shared_counts.get(fid, 0) + 1
+
+    lo, hi = _wilson(together, trials)
+    shared = sorted(
+        ({"college": college.get(fid, "?"), "pct": round(100 * n / trials),
+          "lo": _wilson(n, trials)[0], "hi": _wilson(n, trials)[1]}
+         for fid, n in shared_counts.items() if n),
+        key=lambda o: -o["pct"])
+    return {"trials": trials, "other_name": other_name, "other_entered": True,
+            "same_group": False, "together_pct": round(100 * together / trials),
+            "together_lo": lo, "together_hi": hi, "shared": shared}
+
+
 def run_allocation(conn, term, seed=None, actor="admin"):
     """Run the ballot for every open formal in `term`. Existing active
     allocations keep their seats; the ballot fills remaining capacity for

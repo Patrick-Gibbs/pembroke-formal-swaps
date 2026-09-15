@@ -146,6 +146,18 @@ renumber();
   (save your ranking first){% endif %}.</p>
   <p><button type="button" class="btn" id="sim-btn" onclick="runSim()">🎲 Simulate current outcomes</button></p>
   <div id="sim-result"></div>
+
+  <h3 style="margin-top:1.2rem">Will you be at a formal with a friend?</h3>
+  <p class="muted">Pick another registered member and simulate how often you'd
+  both end up at the same formal.</p>
+  <div style="position:relative;max-width:22rem">
+    <input type="text" id="pair-name" autocomplete="off" placeholder="Start typing their name…"
+           style="width:100%;padding:.45rem;border:1px solid #b8c4d0;border-radius:6px">
+    <input type="hidden" id="pair-id">
+    <div id="pair-suggest"></div>
+  </div>
+  <p><button type="button" class="btn ghost" id="pair-btn" onclick="runPair()">🤝 Simulate being together</button></p>
+  <div id="pair-result"></div>
 </div>
 <script>
 async function runSim() {
@@ -187,6 +199,66 @@ async function runSim() {
       'estimates the odds under the <i>current</i> entries). Separately, the ' +
       'results are a snapshot: ' + d.n_entrants + ' entrant(s) so far, and as ' +
       'more people add preferences the odds of getting a popular formal will go down.</p>';
+    out.innerHTML = html;
+  } catch (e) {
+    out.innerHTML = '<p class="flash error">Couldn\'t run the simulation — try again.</p>';
+  } finally {
+    btn.disabled = false; btn.textContent = label;
+  }
+}
+
+const pairName = document.getElementById('pair-name');
+const pairId = document.getElementById('pair-id');
+const pairSuggest = document.getElementById('pair-suggest');
+let pairTimer = null;
+async function showPairSuggest() {
+  const q = pairName.value.trim();
+  if (q.length < 2) { pairSuggest.innerHTML = ''; return; }
+  try {
+    const people = await (await fetch('/ballot/search?q=' + encodeURIComponent(q))).json();
+    pairSuggest.innerHTML = '';
+    people.forEach(function (p) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'small ghost';
+      b.style.display = 'block'; b.style.width = '100%'; b.style.margin = '.15rem 0';
+      b.textContent = p.name;
+      b.onclick = function () { pairName.value = p.name; pairId.value = p.id; pairSuggest.innerHTML = ''; };
+      pairSuggest.appendChild(b);
+    });
+  } catch (e) { /* ignore */ }
+}
+pairName.addEventListener('input', function () {
+  pairId.value = ''; clearTimeout(pairTimer); pairTimer = setTimeout(showPairSuggest, 250);
+});
+async function runPair() {
+  const btn = document.getElementById('pair-btn');
+  const out = document.getElementById('pair-result');
+  out.innerHTML = '';
+  if (!pairId.value) { out.innerHTML = '<p class="flash error">Pick a person from the suggestions first.</p>'; return; }
+  btn.disabled = true; const label = btn.textContent; btn.textContent = 'Simulating…';
+  const ci = (lo, hi) => ' <span class="muted">(95% CI ' + lo + '–' + hi + '%)</span>';
+  try {
+    const d = await (await fetch('/simulate/pair?with=' + encodeURIComponent(pairId.value))).json();
+    if (d.error) { out.innerHTML = '<p class="flash error">' + d.error + '</p>'; return; }
+    if (!d.other_entered) {
+      out.innerHTML = '<p><b>' + d.other_name + '</b> hasn\'t entered the ballot yet, ' +
+        'so you can\'t be placed together — chance is <b>0%</b> for now.</p>';
+      return;
+    }
+    let html = '<p>Across ' + d.trials + ' simulated ballots, the chance you and <b>' +
+      d.other_name + '</b> are at the same formal: <b>' + d.together_pct + '%</b>' +
+      (d.same_group ? '' : ci(d.together_lo, d.together_hi)) + '.</p>';
+    if (d.same_group) html += '<p class="muted">You\'re in the same ballot group, so whenever ' +
+      'either of you gets a place you\'ll be there together.</p>';
+    if (d.shared && d.shared.length) {
+      html += '<p style="margin:.4rem 0 .2rem">Most likely shared formals:</p>' +
+        '<table style="margin:.2rem 0"><tr><th>Formal</th><th>Both attend (95% CI)</th></tr>';
+      d.shared.forEach(function (o) {
+        html += '<tr><td>' + o.college + '</td><td>' + o.pct + '% <span class="muted">(' +
+          o.lo + '–' + o.hi + ')</span></td></tr>';
+      });
+      html += '</table>';
+    }
     out.innerHTML = html;
   } catch (e) {
     out.innerHTML = '<p class="flash error">Couldn\'t run the simulation — try again.</p>';

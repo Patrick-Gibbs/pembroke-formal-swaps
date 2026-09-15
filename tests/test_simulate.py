@@ -110,3 +110,55 @@ def test_group_member_sees_group_outcome(db):
     assert r["first_pref_pct"] == 100
     # The leader running it sees the SAME group odds, not solo odds.
     assert simulate_user(db, 1, "T1", trials=20) == r
+
+
+def test_pair_same_formal(db):
+    from swaps.services import simulate_pair
+    for u in (1, 2):
+        add_user(db, u)
+    add_formal(db, 1, slots=5, term="T1")
+    db.execute("UPDATE formals SET status='open'")
+    _prefs(db, 1, "T1", [1])
+    _prefs(db, 2, "T1", [1])
+    r = simulate_pair(db, 1, 2, "T1", trials=50)
+    assert r["other_entered"] is True and r["same_group"] is False
+    assert r["together_pct"] == 100  # both fit the 5-seat formal every time
+    assert r["shared"][0]["college"] == "College1"
+
+
+def test_pair_cannot_share_single_seat(db):
+    from swaps.services import simulate_pair
+    for u in (1, 2):
+        add_user(db, u)
+    add_formal(db, 1, slots=1, term="T1")  # only one of them can ever get it
+    db.execute("UPDATE formals SET status='open'")
+    _prefs(db, 1, "T1", [1])
+    _prefs(db, 2, "T1", [1])
+    r = simulate_pair(db, 1, 2, "T1", trials=50)
+    assert r["together_pct"] == 0
+
+
+def test_pair_other_not_entered(db):
+    from swaps.services import simulate_pair
+    for u in (1, 2):
+        add_user(db, u)
+    add_formal(db, 1, slots=5, term="T1")
+    db.execute("UPDATE formals SET status='open'")
+    _prefs(db, 1, "T1", [1])  # user 2 has no preferences
+    r = simulate_pair(db, 1, 2, "T1", trials=20)
+    assert r["other_entered"] is False and r["together_pct"] == 0
+
+
+def test_pair_same_group_always_together(db):
+    from swaps.services import simulate_pair
+    for u in (1, 2):
+        add_user(db, u)
+    add_formal(db, 1, slots=5, term="T1")
+    db.execute("UPDATE formals SET status='open'")
+    db.execute("INSERT INTO ballot_groups(id, term, leader_user_id) VALUES (1,'T1',1)")
+    for u in (1, 2):
+        db.execute("INSERT INTO ballot_group_members(group_id, user_id, status) "
+                   "VALUES (1, ?, 'accepted')", (u,))
+    _prefs(db, 1, "T1", [1])
+    r = simulate_pair(db, 1, 2, "T1", trials=20)
+    assert r["same_group"] is True and r["together_pct"] == 100
