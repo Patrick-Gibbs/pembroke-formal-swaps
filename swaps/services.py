@@ -6,6 +6,7 @@ where a "pending hold" is a released_slots row whose release_at is still in
 the future and which hasn't been claimed. Cancelling therefore frees the seat
 only once its randomized release_at passes.
 """
+import math
 import secrets
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -149,10 +150,29 @@ def unit_id_for_user(unit_members, user_id):
     return None
 
 
-def simulate_user(conn, user_id, term, trials=100):
+Z_95 = 1.96
+
+
+def _wilson(k, n, z=Z_95):
+    """95% Wilson score interval for a binomial proportion, as integer
+    percentages. Well-behaved at the extremes (k=0 or k=n) unlike the normal
+    approximation. Returns (lo_pct, hi_pct)."""
+    if n == 0:
+        return 0, 0
+    p = k / n
+    denom = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / denom
+    half = (z / denom) * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))
+    lo = max(0.0, centre - half)
+    hi = min(1.0, centre + half)
+    return round(100 * lo), round(100 * hi)
+
+
+def simulate_user(conn, user_id, term, trials=400):
     """Run the ballot `trials` times on the CURRENT state (no writes) and
-    report this user's outcomes. Returns a dict, or None if the user isn't a
-    live entrant (no viable ranked formals / not in an entered group)."""
+    report this user's outcomes with 95% confidence intervals (Monte-Carlo
+    error from the finite number of runs). Returns a dict, or None if the user
+    isn't a live entrant (no viable ranked formals / not in an entered group)."""
     capacity, unit_prefs, unit_sizes, unit_caps, unit_members = \
         build_ballot_inputs(conn, term)
     uid = unit_id_for_user(unit_members, user_id)
@@ -168,6 +188,7 @@ def simulate_user(conn, user_id, term, trials=100):
 
     first_hits = 0
     total_swaps = 0
+    total_sq = 0
     # slot_counts[k][fid] = # trials the unit won `fid` as its (k+1)-th swap
     # (its round-(k+1) win). fid None means "no swap in that slot".
     slot_counts = [{} for _ in range(cap)]
@@ -179,6 +200,7 @@ def simulate_user(conn, user_id, term, trials=100):
         if first_pref in won:
             first_hits += 1
         total_swaps += len(won)
+        total_sq += len(won) ** 2
         for k in range(cap):
             fid = by_round.get(k + 1)  # round k+1 = the (k+1)-th swap
             slot_counts[k][fid] = slot_counts[k].get(fid, 0) + 1
@@ -186,22 +208,38 @@ def simulate_user(conn, user_id, term, trials=100):
     slots = []
     for k in range(cap):
         counts = slot_counts[k]
-        options = sorted(
-            ({"college": college.get(fid, "?"), "pct": round(100 * n / trials)}
-             for fid, n in counts.items() if fid is not None and n),
-            key=lambda o: -o["pct"])
+        options = []
+        for fid, n in counts.items():
+            if fid is None or not n:
+                continue
+            lo, hi = _wilson(n, trials)
+            options.append({"college": college.get(fid, "?"),
+                            "pct": round(100 * n / trials), "lo": lo, "hi": hi})
+        options.sort(key=lambda o: -o["pct"])
+        none_lo, none_hi = _wilson(counts.get(None, 0), trials)
         slots.append({
-            "n": k + 1,
-            "options": options,
+            "n": k + 1, "options": options,
             "none_pct": round(100 * counts.get(None, 0) / trials),
+            "none_lo": none_lo, "none_hi": none_hi,
         })
 
+    # 95% interval for the mean total (CLT; a bounded 0..cap count).
+    mean = total_swaps / trials
+    if trials > 1:
+        var = max(0.0, (total_sq - trials * mean * mean) / (trials - 1))
+        margin = Z_95 * math.sqrt(var) / math.sqrt(trials)
+    else:
+        margin = 0.0
+    first_lo, first_hi = _wilson(first_hits, trials)
     return {
         "trials": trials,
         "in_group": uid.startswith("g:"),
         "first_pref_college": college.get(first_pref, ""),
         "first_pref_pct": round(100 * first_hits / trials),
-        "expected_total": round(total_swaps / trials, 1),
+        "first_pref_lo": first_lo, "first_pref_hi": first_hi,
+        "expected_total": round(mean, 1),
+        "expected_lo": round(max(0.0, mean - margin), 1),
+        "expected_hi": round(min(float(cap), mean + margin), 1),
         "n_entrants": len(unit_members),
         "slots": slots,
     }

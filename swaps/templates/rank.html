@@ -159,28 +159,34 @@ async function runSim() {
     if (d.error) { out.innerHTML = '<p class="flash error">' + d.error + '</p>'; return; }
     const swaps = d.expected_total === 1 ? '1 swap' : d.expected_total + ' swaps';
     const ord = ['first', 'second', 'third'];
+    const ci = (lo, hi) => ' <span class="muted">(95% CI ' + lo + '–' + hi + ')</span>';
     let html =
       '<p><b>Across ' + d.trials + ' simulated ballots' +
       (d.in_group ? ' (as part of your group)' : '') + ':</b></p>' +
       '<ul>' +
       '<li>Chance of getting your first preference' +
       (d.first_pref_college ? ' (' + d.first_pref_college + ')' : '') +
-      ': <b>' + d.first_pref_pct + '%</b></li>' +
-      '<li>Formals you\'re likely to get in total: <b>' + swaps + '</b></li>' +
+      ': <b>' + d.first_pref_pct + '%</b>' + ci(d.first_pref_lo + '%', d.first_pref_hi + '%') + '</li>' +
+      '<li>Formals you\'re likely to get in total: <b>' + swaps + '</b>' +
+      ci(d.expected_lo, d.expected_hi) + '</li>' +
       '</ul>';
     (d.slots || []).forEach(function (s) {
       html += '<p style="margin:.6rem 0 .2rem"><b>Your ' + (ord[s.n - 1] || (s.n + 'th')) +
         ' swap</b> — where it lands:</p><table style="margin:.2rem 0">' +
-        '<tr><th>Formal</th><th>Probability</th></tr>';
+        '<tr><th>Formal</th><th>Probability (95% CI)</th></tr>';
       s.options.forEach(function (o) {
-        html += '<tr><td>' + o.college + '</td><td>' + o.pct + '%</td></tr>';
+        html += '<tr><td>' + o.college + '</td><td>' + o.pct + '% <span class="muted">(' +
+          o.lo + '–' + o.hi + ')</span></td></tr>';
       });
       html += '<tr><td>No ' + (ord[s.n - 1] || (s.n + 'th')) + ' swap</td><td>' +
-        s.none_pct + '%</td></tr></table>';
+        s.none_pct + '% <span class="muted">(' + s.none_lo + '–' + s.none_hi +
+        ')</span></td></tr></table>';
     });
-    html += '<p class="muted">These results are only a snapshot and are subject to ' +
-      'change: ' + d.n_entrants + ' entrant(s) so far, and as more people add ' +
-      'preferences the odds of getting a popular formal will go down.</p>';
+    html += '<p class="muted">The 95% confidence intervals reflect the ' +
+      'randomness of the ' + d.trials + ' simulation runs (how precisely this ' +
+      'estimates the odds under the <i>current</i> entries). Separately, the ' +
+      'results are a snapshot: ' + d.n_entrants + ' entrant(s) so far, and as ' +
+      'more people add preferences the odds of getting a popular formal will go down.</p>';
     out.innerHTML = html;
   } catch (e) {
     out.innerHTML = '<p class="flash error">Couldn\'t run the simulation — try again.</p>';

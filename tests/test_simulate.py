@@ -60,6 +60,34 @@ def test_oversubscribed_first_pref_is_split(db):
     assert r1["first_pref_pct"] + r2["first_pref_pct"] == 100
 
 
+def test_confidence_intervals(db):
+    for u in (1, 2):
+        add_user(db, u)
+    add_formal(db, 1, slots=1, term="T1")
+    db.execute("UPDATE formals SET status='open'")
+    _prefs(db, 1, "T1", [1])
+    _prefs(db, 2, "T1", [1])
+    r = simulate_user(db, 1, "T1", trials=400)
+    # Wilson CI brackets the point estimate and stays within [0,100]
+    assert r["first_pref_lo"] <= r["first_pref_pct"] <= r["first_pref_hi"]
+    assert 0 <= r["first_pref_lo"] and r["first_pref_hi"] <= 100
+    assert r["expected_lo"] <= r["expected_total"] <= r["expected_hi"]
+    for slot in r["slots"]:
+        for o in slot["options"]:
+            assert o["lo"] <= o["pct"] <= o["hi"]
+
+
+def test_certain_outcome_ci_not_zero_width(db):
+    # k == n (100%) must NOT collapse to a ±0 interval (the Wald failure mode).
+    add_user(db, 1)
+    add_formal(db, 1, slots=5, term="T1")
+    db.execute("UPDATE formals SET status='open'")
+    _prefs(db, 1, "T1", [1])
+    r = simulate_user(db, 1, "T1", trials=400)
+    assert r["first_pref_pct"] == 100
+    assert r["first_pref_lo"] < 100 and r["first_pref_hi"] == 100
+
+
 def test_non_entrant_returns_none(db):
     add_user(db, 1)
     add_formal(db, 1, slots=5, term="T1")

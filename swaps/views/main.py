@@ -183,7 +183,7 @@ def simulate():
     term = get_setting(db, "current_term")
     if not term:
         return jsonify({"error": "No term is set up."}), 400
-    result = simulate_user(db, current_user()["id"], term, trials=100)
+    result = simulate_user(db, current_user()["id"], term, trials=400)
     if result is None:
         return jsonify({"error": "Rank at least one formal (and save) first, "
                         "then simulate."}), 400

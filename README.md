@@ -35,6 +35,12 @@ somewhere discoverable (e.g. the footer).
 - **Max-places cap**: each member sets "maximum number of swaps I'm happy to
   be assigned if there is capacity" (1–3). The ballot never assigns more,
   though members can still claim extra freed places themselves later.
+- **Simulate outcomes** (on `/rank`): runs the real ballot engine 400× against
+  everyone's current preferences and reports the member's first-preference odds,
+  expected total swaps, and a per-slot (1st/2nd/3rd) probability distribution —
+  each with a 95% confidence interval (Wilson for proportions; reflects
+  simulation error, not future entrants). Works for group leaders/members
+  (reports the group's shared odds).
 - **Group balloting** (`/ballot/`): form a group (cap 4), invite registered
   members by name with live autocomplete; invitees accept/decline on-site or
   via the emailed link. The group enters the ballot as one block with the
