@@ -143,8 +143,7 @@ def reminder_email(to, formal, ics_files):
         f"<p>A friendly reminder — you're going to a formal <b>today</b>:</p>"
         f"{_formal_block(formal)}"
         f"<p>Have a wonderful evening! And at the end of the formal, remember "
-        f"to <a href=\"{review_link}\">leave a review</a> — it helps everyone "
-        f"pick next term's swaps.</p>",
+        f"to <a href=\"{review_link}\">leave a review</a>.</p>",
         attachments=ics_files)
 
 
@@ -154,4 +153,4 @@ def review_request_email(to, formal, link):
         f"<p>Hope you enjoyed the <b>{formal['host_college']}</b> formal tonight!</p>"
         f"<p><a href=\"{link}\">Rate your experience out of 5 stars</a> — one star "
         f"per good course, two for the vibes — and leave a review or photo if you "
-        f"like. It helps everyone pick next term's swaps.</p>")
+        f"like.</p>")

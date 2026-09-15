@@ -44,6 +44,16 @@ def init_db(db_path=None):
                      "INTEGER NOT NULL DEFAULT 0")
         # Pre-existing allocations were emailed under the old flow.
         conn.execute("UPDATE allocations SET notified=1")
+    gcols = {r["name"] for r in conn.execute("PRAGMA table_info(ballot_groups)")}
+    if "party_name" not in gcols:
+        conn.execute("ALTER TABLE ballot_groups ADD COLUMN party_name "
+                     "TEXT NOT NULL DEFAULT ''")
+    # Migrate legacy single review photo -> review_photos, then clear the column
+    # so it won't re-migrate.
+    for r in conn.execute("SELECT id, photo FROM reviews WHERE photo != ''").fetchall():
+        conn.execute("INSERT INTO review_photos(review_id, filename) VALUES (?,?)",
+                     (r["id"], r["photo"]))
+        conn.execute("UPDATE reviews SET photo='' WHERE id=?", (r["id"],))
     conn.close()
 
 

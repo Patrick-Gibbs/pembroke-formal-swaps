@@ -12,7 +12,40 @@ from ..services import (CancelError, ClaimError, cancel_allocation,
                         cancel_cutoff_hours, claim_seat, free_seats,
                         hours_until_formal, local_now, parse_local)
 
-PHOTO_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+PHOTO_MAX_DIM = 2000   # longest edge, px — larger uploads are downscaled
+MAX_REVIEW_PHOTOS = 3
+
+
+def _review_photos(db, review_id):
+    return [r["filename"] for r in db.execute(
+        "SELECT filename FROM review_photos WHERE review_id=? ORDER BY id",
+        (review_id,)).fetchall()]
+
+
+def _delete_photo(name):
+    try:
+        os.remove(os.path.join(config.PHOTOS_DIR, name))
+    except OSError:
+        pass
+
+
+def _save_review_photo(file, formal_id, user_id):
+    """Read an uploaded image, fix EXIF orientation, downscale very large
+    photos, and save as a JPEG. Returns the filename, or None if the file
+    isn't a readable image. Never rejects for being too big — it shrinks."""
+    from PIL import Image, ImageOps, UnidentifiedImageError
+    try:
+        img = Image.open(file.stream)
+        img = ImageOps.exif_transpose(img)
+    except (UnidentifiedImageError, OSError):
+        return None
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+    img.thumbnail((PHOTO_MAX_DIM, PHOTO_MAX_DIM))  # in-place, keeps aspect ratio
+    os.makedirs(config.PHOTOS_DIR, exist_ok=True)
+    name = f"r{formal_id}-{user_id}-{secrets.token_hex(4)}.jpg"
+    img.save(os.path.join(config.PHOTOS_DIR, name), "JPEG", quality=85, optimize=True)
+    return name
 
 bp = Blueprint("main", __name__)
 
@@ -157,10 +190,14 @@ def attendees():
     data = []
     for f in formals:
         rows = db.execute(
-            "SELECT u.first_name, u.last_name, u.dietary_flags, u.dietary_other "
+            "SELECT u.first_name, u.last_name, u.dietary_flags, u.dietary_other, "
+            "COALESCE(g.party_name, '') AS party "
             "FROM allocations a JOIN users u ON u.id = a.user_id "
+            "LEFT JOIN ballot_group_members m ON m.user_id = u.id "
+            "  AND m.status = 'accepted' "
+            "LEFT JOIN ballot_groups g ON g.id = m.group_id AND g.term = ? "
             "WHERE a.formal_id=? AND a.status='active' "
-            "ORDER BY u.last_name, u.first_name", (f["id"],)).fetchall()
+            "ORDER BY u.last_name, u.first_name", (term, f["id"])).fetchall()
         diets = {}
         for r in rows:
             for d in filter(None, r["dietary_flags"].split(",")):
@@ -267,33 +304,43 @@ def review(formal_id):
                          if request.form.get(v))
         text = request.form.get("review", "").strip()[:2000]
 
-        photo_name = existing["photo"] if existing else ""
-        file = request.files.get("photo")
-        if file and file.filename:
-            ext = os.path.splitext(file.filename)[1].lower()
-            if ext not in PHOTO_EXTS:
-                flash("Photo must be a JPG, PNG, WebP or GIF.", "error")
-                return render_template("review_form.html", f=f, r=existing)
-            os.makedirs(config.PHOTOS_DIR, exist_ok=True)
-            if photo_name:  # replacing an earlier upload
-                try:
-                    os.remove(os.path.join(config.PHOTOS_DIR, photo_name))
-                except OSError:
-                    pass
-            photo_name = f"r{formal_id}-{user['id']}-{secrets.token_hex(4)}{ext}"
-            file.save(os.path.join(config.PHOTOS_DIR, photo_name))
+        # New photos (up to 3) replace any existing ones; uploading none keeps
+        # the current photos. Oversized images are downscaled, not rejected.
+        files = [x for x in request.files.getlist("photos") if x and x.filename]
+        saved = []
+        for x in files[:MAX_REVIEW_PHOTOS]:
+            new_name = _save_review_photo(x, formal_id, user["id"])
+            if new_name is None:
+                for n in saved:  # clean up partial batch
+                    _delete_photo(n)
+                flash("Couldn't read one of those photos — please upload normal "
+                      "images (JPEG, PNG, etc.).", "error")
+                return render_template("review_form.html", f=f, r=existing,
+                                       photos=_review_photos(db, existing["id"])
+                                       if existing else [])
+            saved.append(new_name)
 
         db.execute(
             "INSERT INTO reviews(user_id, formal_id, course_stars, vibe_stars, "
-            "review, photo) VALUES (?,?,?,?,?,?) "
+            "review) VALUES (?,?,?,?,?) "
             "ON CONFLICT(user_id, formal_id) DO UPDATE SET course_stars=excluded."
             "course_stars, vibe_stars=excluded.vibe_stars, review=excluded.review, "
-            "photo=excluded.photo, created_at=datetime('now')",
-            (user["id"], formal_id, course_stars, vibe_stars, text, photo_name))
+            "created_at=datetime('now')",
+            (user["id"], formal_id, course_stars, vibe_stars, text))
+        review_id = db.execute("SELECT id FROM reviews WHERE user_id=? AND formal_id=?",
+                               (user["id"], formal_id)).fetchone()["id"]
+        if saved:  # replace existing photos with the new batch
+            for old in _review_photos(db, review_id):
+                _delete_photo(old)
+            db.execute("DELETE FROM review_photos WHERE review_id=?", (review_id,))
+            for name in saved:
+                db.execute("INSERT INTO review_photos(review_id, filename) "
+                           "VALUES (?,?)", (review_id, name))
         flash(f"Thanks — you rated it {course_stars + vibe_stars}/5. "
               "You can edit your review any time.", "ok")
         return redirect(url_for("main.reviews_page"))
-    return render_template("review_form.html", f=f, r=existing)
+    return render_template("review_form.html", f=f, r=existing,
+                           photos=_review_photos(db, existing["id"]) if existing else [])
 
 
 def _college_stats(db):
@@ -325,9 +372,10 @@ def reviews_page():
         "SELECT r.*, f.host_college, f.dt, u.first_name, u.last_name "
         "FROM reviews r JOIN formals f ON f.id = r.formal_id "
         "JOIN users u ON u.id = r.user_id ORDER BY r.created_at DESC").fetchall()
+    photos = {r["id"]: _review_photos(db, r["id"]) for r in rows}
     stats = [(s["college"], s["mean"], s["sd"], s["n"])
              for s in sorted(_college_stats(db), key=lambda s: -s["mean"])]
-    return render_template("reviews.html", rows=rows, stats=stats)
+    return render_template("reviews.html", rows=rows, stats=stats, photos=photos)
 
 
 @bp.route("/reviews/data.json")

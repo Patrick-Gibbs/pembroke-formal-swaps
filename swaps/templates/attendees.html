@@ -12,10 +12,11 @@ an email with your result the moment they go out.</p>
   <p class="muted">{{ rows|length }} attending / {{ f['slots'] }} places</p>
   {% if rows %}
   <table>
-    <tr><th>Name</th><th>Dietary</th></tr>
+    <tr><th>Name</th><th>Party</th><th>Dietary</th></tr>
     {% for r in rows %}
     <tr>
       <td>{{ r['first_name'] }} {{ r['last_name'] }}</td>
+      <td>{% if r['party'] %}<span class="muted">{{ r['party'] }}</span>{% endif %}</td>
       <td>{{ ", ".join((r['dietary_flags'].split(',') if r['dietary_flags'] else []) + ([r['dietary_other']] if r['dietary_other'] else [])) }}</td>
     </tr>
     {% endfor %}

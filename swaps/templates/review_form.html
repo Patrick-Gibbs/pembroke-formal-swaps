@@ -21,9 +21,15 @@
   </div>
   <label>Your review (optional)</label>
   <textarea name="review" rows="5" style="width:100%;max-width:32rem;padding:.45rem;border:1px solid #b8c4d0;border-radius:5px;font-size:1rem" placeholder="How was it?">{{ r['review'] if r else '' }}</textarea>
-  <label>Photo (optional, JPG/PNG/WebP/GIF, max 6&nbsp;MB)</label>
-  <input type="file" name="photo" accept=".jpg,.jpeg,.png,.webp,.gif">
-  {% if r and r['photo'] %}<p class="muted">You already uploaded a photo — choosing a new one replaces it.</p>{% endif %}
+  <label>Photos (optional, up to 3)</label>
+  <input type="file" name="photos" accept="image/*" multiple>
+  <p class="muted">On a phone you can pick from your camera roll or take one now.
+  Large photos are automatically resized. Selecting new photos replaces any you
+  already uploaded (choose up to 3 at once).</p>
+  {% if photos %}
+  <p class="muted">Current photos:</p>
+  <p>{% for p in photos %}<img src="/photos/{{ p }}" alt="" style="height:80px;border-radius:6px;margin:0 .4rem .4rem 0">{% endfor %}</p>
+  {% endif %}
   <p><button>{{ 'Update review' if r else 'Post review' }}</button></p>
 </form>
 <p class="muted">Your review appears with your first name on the public

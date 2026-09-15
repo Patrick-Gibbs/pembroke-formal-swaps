@@ -62,6 +62,16 @@
   accepted members.</p>
 
   {% if is_leader %}
+  <h3>Party name (optional)</h3>
+  <form method="post" action="/ballot/party">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="text" name="party_name" maxlength="60" value="{{ group['party_name'] }}"
+           placeholder="e.g. The Cheese Lovers" style="max-width:20rem">
+    <button>Save</button>
+  </form>
+  <p class="muted">If set, your party name is shown next to your group on the
+  public attendee list. Leave blank for none.</p>
+
   <h3>Invite someone</h3>
   <form method="post" action="/ballot/invite" id="inviteform">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">

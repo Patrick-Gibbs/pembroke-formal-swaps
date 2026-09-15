@@ -39,7 +39,9 @@ somewhere discoverable (e.g. the footer).
   members by name with live autocomplete; invitees accept/decline on-site or
   via the emailed link. The group enters the ballot as one block with the
   leader's ranking — all seated together or not at all. One group per member
-  per term; the leader's max-places cap applies to the group.
+  per term; the leader's max-places cap applies to the group. The leader can
+  set an optional **party name**, shown next to the group on the public
+  attendee list (not in admin exports).
 - **Results by email** on publish: each winner gets all their formals with
   **.ics calendar invitations attached** (one tap adds the event, with
   location, instructions, price, and a 2-hour-before alarm); entrants who got
@@ -57,7 +59,9 @@ somewhere discoverable (e.g. the footer).
   nudge to review afterwards); 19:30 review request.
 - **Reviews** (`/reviews`, public): rate a formal out of 5 stars — one per
   good course (3, shown gold) plus hosts & atmosphere (2, shown silver) — with
-  optional text and photo; reviews open from 9:00 on the day. The page shows
+  optional text and up to 3 photos (any size — big uploads are auto-downscaled
+  server-side; on a phone you can pick from the camera roll or take one);
+  reviews open from 9:00 on the day. The page shows
   every review, each college's **mean ± standard deviation**, and two
   live-updating charts: average rating by college (± standard error, ordered
   worst→best) and average rating vs college endowment (log₁₀ scale).
@@ -236,7 +240,7 @@ cd /opt/swaps
 git clone <this-repo-url> app        # or scp/rsync the app/ directory
 python3 -m venv venv
 venv/bin/pip install --upgrade pip
-venv/bin/pip install flask waitress argon2-cffi requests pytest
+venv/bin/pip install flask waitress argon2-cffi requests Pillow pytest
 ```
 
 > Python note: everything is pure-Python except `argon2-cffi`, which ships
@@ -417,7 +421,7 @@ systemctl start swaps
 ## 6. Local development
 
 ```bash
-python3 -m venv venv && venv/bin/pip install flask waitress argon2-cffi requests pytest
+python3 -m venv venv && venv/bin/pip install flask waitress argon2-cffi requests Pillow pytest
 cp .env.example .env          # fill in gen-secrets values; EMAIL_MODE=dev
 COOKIE_SECURE=0 SITE_URL=http://127.0.0.1:8000 venv/bin/python wsgi.py
 # browse http://127.0.0.1:8000 — “sent” emails print to the console

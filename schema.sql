@@ -136,10 +136,17 @@ CREATE TABLE IF NOT EXISTS ballot_caps (
     UNIQUE(user_id, term)
 );
 
+CREATE TABLE IF NOT EXISTS review_photos (
+    id INTEGER PRIMARY KEY,
+    review_id INTEGER NOT NULL REFERENCES reviews(id),
+    filename TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS ballot_groups (
     id INTEGER PRIMARY KEY,
     term TEXT NOT NULL,
     leader_user_id INTEGER NOT NULL REFERENCES users(id),
+    party_name TEXT NOT NULL DEFAULT '',   -- optional; shown on public attendee list
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

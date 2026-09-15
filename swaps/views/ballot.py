@@ -77,6 +77,22 @@ def create():
     return redirect(url_for("ballot.home"))
 
 
+@bp.route("/party", methods=["POST"])
+@login_required
+def party():
+    db = get_db()
+    user = current_user()
+    group = accepted_group(db, user["id"], _term(db))
+    if not group or group["leader_user_id"] != user["id"]:
+        flash("Only the group leader can set the party name.", "error")
+        return redirect(url_for("ballot.home"))
+    name = request.form.get("party_name", "").strip()[:60]
+    db.execute("UPDATE ballot_groups SET party_name=? WHERE id=?",
+               (name, group["id"]))
+    flash("Party name saved." if name else "Party name cleared.", "ok")
+    return redirect(url_for("ballot.home"))
+
+
 @bp.route("/search")
 @login_required
 def search():
