@@ -171,9 +171,17 @@ def swap_accepted_email(to, other_name, now_attending, gave_up):
         f"<p>See your places at <a href=\"{config.SITE_URL}/me\">{config.SITE_URL}/me</a>.</p>")
 
 
-def catering_email(to, cc, formal, rows):
+def catering_email(to, cc, formal, rows, admin_name=""):
     """Attendance list + dietary requirements to a host college, one week before.
-    rows: sequence with first_name, last_name, dietary_flags, dietary_other."""
+    rows: sequence with first_name, last_name, dietary_flags, dietary_other.
+    Addressed to the host contact by name if known; signed by admin_name."""
+    try:
+        host_name = (formal["host_name"] or "").strip()
+    except (KeyError, IndexError):
+        host_name = ""
+    greeting = (f"Dear {host_name}," if host_name
+                else f"Dear {formal['host_college']} formals team,")
+    signoff = f"— {admin_name}" if admin_name else "— Pembroke Formal Swaps"
     def diet(r):
         parts = list(filter(None, r["dietary_flags"].split(","))) if r["dietary_flags"] else []
         if r["dietary_other"]:
@@ -195,7 +203,7 @@ def catering_email(to, cc, formal, rows):
     return send(
         to,
         f"Pembroke attendees — {formal['host_college']} formal, {formal['dt']}",
-        f"<p>Dear {formal['host_college']} formals team,</p>"
+        f"<p>{greeting}</p>"
         f"<p>Please find below the <b>{len(rows)}</b> Pembroke College member(s) "
         f"attending your formal on <b>{formal['dt']}</b>, with dietary "
         f"requirements for catering.</p>"
@@ -205,7 +213,7 @@ def catering_email(to, cc, formal, rows):
         f"{body}</table>"
         f"<p><b>Dietary summary:</b> {summary}.</p>"
         f"<p>Please let us know if you need anything further. Thank you!</p>"
-        f"<p>— Pembroke Formal Swaps</p>",
+        f"<p>{signoff}</p>",
         cc=cc)
 
 

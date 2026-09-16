@@ -623,6 +623,7 @@ def send_scheduled_emails(conn, send_reminder, send_review, send_catering=None,
     fired = []
     published = get_setting(conn, "results_published", "1") == "1"
     admin_email = get_setting(conn, "admin_email", "").strip()
+    admin_name = get_setting(conn, "admin_name", "").strip()
     rows = conn.execute(
         "SELECT id FROM formals WHERE status IN ('open','allocated') "
         "AND (reminder_sent=0 OR review_sent=0 OR catering_sent=0)").fetchall()
@@ -647,7 +648,7 @@ def send_scheduled_emails(conn, send_reminder, send_review, send_catering=None,
                 if do_send:
                     cc = (admin_email if host_email and admin_email
                           and admin_email.lower() != host_email.lower() else None)
-                    send_catering(f, recipient, cc, attendees)
+                    send_catering(f, recipient, cc, attendees, admin_name)
                     fired.append(("catering", f["id"]))
 
         if start.date() != now.date():

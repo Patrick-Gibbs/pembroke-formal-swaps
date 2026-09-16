@@ -102,7 +102,7 @@ def _catering_setup(db, host_email="host@jesus.cam.ac.uk"):
 def _run_catering(db, now):
     sent = []
     send_scheduled_emails(db, lambda f, e: None, lambda f, e: None,
-                          lambda f, to, cc, rows: sent.append((to, cc, len(rows))),
+                          lambda f, to, cc, rows, name: sent.append((to, cc, len(rows))),
                           now=now)
     return sent
 

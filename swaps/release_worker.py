@@ -40,8 +40,8 @@ def _send_reviews(formal, emails):
              formal["id"], len(emails))
 
 
-def _send_catering(formal, to, cc, rows):
-    emailer.catering_email(to, cc, formal, rows)
+def _send_catering(formal, to, cc, rows, admin_name):
+    emailer.catering_email(to, cc, formal, rows, admin_name)
     log.info("Sent catering list for formal %s to %s (cc %s), %d attendee(s)",
              formal["id"], to, cc, len(rows))
 

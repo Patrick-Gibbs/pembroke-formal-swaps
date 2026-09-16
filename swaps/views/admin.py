@@ -82,6 +82,7 @@ def dashboard():
                            cancel_cutoff=get_setting(db, "cancel_cutoff_hours", "72"),
                            swap_cutoff=get_setting(db, "swap_cutoff_hours", "168"),
                            admin_email=get_setting(db, "admin_email", ""),
+                           admin_name=get_setting(db, "admin_name", ""),
                            admin_auto_attend=get_setting(db, "admin_auto_attend", "0") == "1",
                            list_public=get_setting(db, "attendee_list_public") == "1")
 
@@ -111,6 +112,7 @@ def settings():
         swap_cut = 168
     set_setting(db, "swap_cutoff_hours", str(swap_cut))
     set_setting(db, "admin_email", request.form.get("admin_email", "").strip()[:200])
+    set_setting(db, "admin_name", request.form.get("admin_name", "").strip()[:120])
     set_setting(db, "admin_auto_attend",
                 "1" if request.form.get("admin_auto_attend") else "0")
     audit(db, "admin", "settings", f"term={term} window={t_open}..{t_close} "
@@ -546,7 +548,7 @@ def catering_email_now(fid):
         return redirect(url_for("admin.roster", fid=fid))
     cc = (admin_email if host_email and admin_email
           and admin_email.lower() != host_email.lower() else None)
-    emailer.catering_email(to, cc, f, rows)
+    emailer.catering_email(to, cc, f, rows, get_setting(db, "admin_name", ""))
     db.execute("UPDATE formals SET catering_sent=1 WHERE id=?", (fid,))
     audit(db, "admin", "catering_email", f"formal={fid} to={to} cc={cc}")
     flash(f"Attendance list sent to {to}" + (f" (cc {cc})" if cc else "") + ".", "ok")

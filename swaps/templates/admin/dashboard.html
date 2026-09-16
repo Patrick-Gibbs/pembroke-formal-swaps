@@ -63,6 +63,8 @@
       {% if list_public %}checked{% endif %}> Attendee list is public (unticked = login required)</label>
     <label>Admin email (CC'd on host catering emails; also the member seated when auto-attend is on)</label>
     <input type="email" name="admin_email" value="{{ admin_email }}" placeholder="you@cam.ac.uk">
+    <label>Admin name (signs off host emails)</label>
+    <input type="text" name="admin_name" value="{{ admin_name }}" placeholder="e.g. Patrick Gibbs">
     <label style="font-weight:normal"><input type="checkbox" name="admin_auto_attend"
       {% if admin_auto_attend %}checked{% endif %}> Auto-attend: reserve me a seat in every
       formal before the ballot runs (the member registered with the admin email above; −1 place each)</label>

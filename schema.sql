@@ -211,4 +211,5 @@ INSERT OR IGNORE INTO settings(key, value) VALUES ('results_published', '1');
 INSERT OR IGNORE INTO settings(key, value) VALUES ('cancel_cutoff_hours', '72');
 INSERT OR IGNORE INTO settings(key, value) VALUES ('swap_cutoff_hours', '168');
 INSERT OR IGNORE INTO settings(key, value) VALUES ('admin_email', '');
+INSERT OR IGNORE INTO settings(key, value) VALUES ('admin_name', '');
 INSERT OR IGNORE INTO settings(key, value) VALUES ('admin_auto_attend', '0');
