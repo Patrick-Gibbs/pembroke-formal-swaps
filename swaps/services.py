@@ -45,6 +45,16 @@ def cancel_cutoff_hours(conn):
         return config.CANCEL_CUTOFF_HOURS
 
 
+def swap_cutoff_hours(conn):
+    """Hours before a formal at which peer-to-peer swaps close. Admin-editable;
+    falls back to config.SWAP_CUTOFF_HOURS (a week)."""
+    try:
+        return float(get_setting(conn, "swap_cutoff_hours", "")
+                     or config.SWAP_CUTOFF_HOURS)
+    except ValueError:
+        return config.SWAP_CUTOFF_HOURS
+
+
 def pending_holds(conn, formal_id):
     now = utcnow_str()
     return conn.execute(
@@ -430,13 +440,17 @@ def _swap_preconditions(conn, from_user, from_formal, to_user, to_formal):
         raise SwapError("You already have a place at that formal.")
     if _holds_active(conn, to_user, from_formal):
         raise SwapError("The other person already has a place at your formal.")
-    cutoff = cancel_cutoff_hours(conn)
+    cutoff = swap_cutoff_hours(conn)
     for fid in (from_formal, to_formal):
         dt = conn.execute("SELECT dt FROM formals WHERE id=?", (fid,)).fetchone()
         if dt is None:
             raise SwapError("That formal no longer exists.")
         if hours_until_formal(dt["dt"]) < cutoff:
-            raise SwapError(f"Swaps close {int(cutoff)} hours before either formal.")
+            days = int(cutoff // 24)
+            when = f"{days} day{'s' if days != 1 else ''}" if cutoff % 24 == 0 \
+                else f"{int(cutoff)} hours"
+            raise SwapError(f"Swaps must be arranged at least {when} before "
+                            "both formals.")
 
 
 def propose_swap(conn, from_user, from_formal, to_user, to_formal):

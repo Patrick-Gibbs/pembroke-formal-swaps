@@ -53,8 +53,9 @@ somewhere discoverable (e.g. the footer).
   location, instructions, price, and a 2-hour-before alarm); entrants who got
   nothing get a courteous miss note.
 - **Assigned swaps page** (`/attendees`): public (or login-only — switchable)
-  list of who's attending each formal, in date order, with per-formal dietary
-  summaries for host colleges. Hidden until the admin publishes.
+  list of who's attending each formal, in date order, showing names (and group
+  "party" names) only. Dietary requirements are **admin-only** (rosters/exports),
+  never shown here. Hidden until the admin publishes.
 - **Cancellation**: self-service until a configurable cut-off (default **72
   hours**) before the formal. A freed place is **not** released instantly —
   it opens at a random moment within the next hour (so it can't be handed

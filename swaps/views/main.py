@@ -248,24 +248,19 @@ def attendees():
     formals = db.execute(
         "SELECT * FROM formals WHERE term=? AND status='allocated' ORDER BY dt",
         (term,)).fetchall()
+    # Public list shows names (and party) only — dietary is admin-only and never
+    # exposed here; admins get it on the roster pages and exports.
     data = []
     for f in formals:
         rows = db.execute(
-            "SELECT u.first_name, u.last_name, u.dietary_flags, u.dietary_other, "
-            "COALESCE(g.party_name, '') AS party "
+            "SELECT u.first_name, u.last_name, COALESCE(g.party_name, '') AS party "
             "FROM allocations a JOIN users u ON u.id = a.user_id "
             "LEFT JOIN ballot_group_members m ON m.user_id = u.id "
             "  AND m.status = 'accepted' "
             "LEFT JOIN ballot_groups g ON g.id = m.group_id AND g.term = ? "
             "WHERE a.formal_id=? AND a.status='active' "
             "ORDER BY u.last_name, u.first_name", (term, f["id"])).fetchall()
-        diets = {}
-        for r in rows:
-            for d in filter(None, r["dietary_flags"].split(",")):
-                diets[d] = diets.get(d, 0) + 1
-            if r["dietary_other"]:
-                diets[r["dietary_other"]] = diets.get(r["dietary_other"], 0) + 1
-        data.append((f, rows, diets))
+        data.append((f, rows))
     return render_template("attendees.html", data=data, term=term,
                            unpublished=False)
 

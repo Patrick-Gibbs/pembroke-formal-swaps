@@ -6,26 +6,20 @@
 <p>The ballot results haven't been published yet — check back soon! You'll get
 an email with your result the moment they go out.</p>
 {% elif not data %}<p>No allocated formals yet — lists appear here after the ballot runs.</p>{% endif %}
-{% for f, rows, diets in data %}
+{% for f, rows in data %}
 <div class="card">
   <h2>{{ f['host_college'] }} — {{ f['dt'] }}</h2>
   <p class="muted">{{ rows|length }} attending / {{ f['slots'] }} places</p>
   {% if rows %}
   <table>
-    <tr><th>Name</th><th>Party</th><th>Dietary</th></tr>
+    <tr><th>Name</th><th>Party</th></tr>
     {% for r in rows %}
     <tr>
       <td>{{ r['first_name'] }} {{ r['last_name'] }}</td>
       <td>{% if r['party'] %}<span class="muted">{{ r['party'] }}</span>{% endif %}</td>
-      <td>{{ ", ".join((r['dietary_flags'].split(',') if r['dietary_flags'] else []) + ([r['dietary_other']] if r['dietary_other'] else [])) }}</td>
     </tr>
     {% endfor %}
   </table>
-  {% if diets %}
-  <p class="muted"><b>Dietary summary for host college:</b>
-    {% for d, n in diets.items() %}{{ d }} ×{{ n }}{% if not loop.last %}, {% endif %}{% endfor %}
-  </p>
-  {% endif %}
   {% else %}<p>No attendees.</p>{% endif %}
 </div>
 {% endfor %}
