@@ -27,17 +27,21 @@ def _record(to, subject, ok, error=""):
         log.exception("could not write email_log entry")
 
 
-def send(to, subject, html, attachments=None):
-    """Send one email. attachments: [(filename, bytes)]. Returns True on
-    success. Never raises. Every attempt is recorded in email_log."""
+def send(to, subject, html, attachments=None, cc=None):
+    """Send one email. attachments: [(filename, bytes)]; cc: str or list.
+    Returns True on success. Never raises. Every attempt is recorded in email_log."""
+    cc_list = [cc] if isinstance(cc, str) and cc else (cc or [])
     if config.EMAIL_MODE != "live":
         names = [a[0] for a in (attachments or [])]
-        log.info("[dev email] to=%s subject=%r attachments=%s", to, subject, names)
-        print(f"--- DEV EMAIL to={to} subject={subject!r} attachments={names} ---"
-              f"\n{html}\n---", flush=True)
+        log.info("[dev email] to=%s cc=%s subject=%r attachments=%s",
+                 to, cc_list, subject, names)
+        print(f"--- DEV EMAIL to={to} cc={cc_list} subject={subject!r} "
+              f"attachments={names} ---\n{html}\n---", flush=True)
         _record(to, subject, True, "dev mode — not actually sent")
         return True
     payload = {"from": config.MAIL_FROM, "to": [to], "subject": subject, "html": html}
+    if cc_list:
+        payload["cc"] = cc_list
     if attachments:
         payload["attachments"] = [
             {"filename": name, "content": base64.b64encode(data).decode()}
@@ -165,6 +169,44 @@ def swap_accepted_email(to, other_name, now_attending, gave_up):
         f"({now_attending['dt']}), and gave up your place at "
         f"<b>{gave_up['host_college']}</b> ({gave_up['dt']}).</p>"
         f"<p>See your places at <a href=\"{config.SITE_URL}/me\">{config.SITE_URL}/me</a>.</p>")
+
+
+def catering_email(to, cc, formal, rows):
+    """Attendance list + dietary requirements to a host college, one week before.
+    rows: sequence with first_name, last_name, dietary_flags, dietary_other."""
+    def diet(r):
+        parts = list(filter(None, r["dietary_flags"].split(","))) if r["dietary_flags"] else []
+        if r["dietary_other"]:
+            parts.append(r["dietary_other"])
+        return ", ".join(parts) or "—"
+
+    body = "".join(
+        f"<tr><td style='border:1px solid #ccc;padding:4px 8px'>{r['first_name']} {r['last_name']}</td>"
+        f"<td style='border:1px solid #ccc;padding:4px 8px'>{diet(r)}</td></tr>"
+        for r in rows)
+    # dietary tallies
+    tally = {}
+    for r in rows:
+        for d in (list(filter(None, r["dietary_flags"].split(","))) if r["dietary_flags"] else []):
+            tally[d] = tally.get(d, 0) + 1
+        if r["dietary_other"]:
+            tally[r["dietary_other"]] = tally.get(r["dietary_other"], 0) + 1
+    summary = ", ".join(f"{d} ×{n}" for d, n in sorted(tally.items())) or "none noted"
+    return send(
+        to,
+        f"Pembroke attendees — {formal['host_college']} formal, {formal['dt']}",
+        f"<p>Dear {formal['host_college']} formals team,</p>"
+        f"<p>Please find below the <b>{len(rows)}</b> Pembroke College member(s) "
+        f"attending your formal on <b>{formal['dt']}</b>, with dietary "
+        f"requirements for catering.</p>"
+        f"<table style='border-collapse:collapse'>"
+        f"<tr><th style='border:1px solid #ccc;padding:4px 8px;text-align:left'>Name</th>"
+        f"<th style='border:1px solid #ccc;padding:4px 8px;text-align:left'>Dietary requirements</th></tr>"
+        f"{body}</table>"
+        f"<p><b>Dietary summary:</b> {summary}.</p>"
+        f"<p>Please let us know if you need anything further. Thank you!</p>"
+        f"<p>— Pembroke Formal Swaps</p>",
+        cc=cc)
 
 
 def review_request_email(to, formal, link):

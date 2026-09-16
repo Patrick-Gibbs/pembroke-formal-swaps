@@ -81,6 +81,8 @@ def dashboard():
                            term_ballot_close=get_setting(db, "term_ballot_close"),
                            cancel_cutoff=get_setting(db, "cancel_cutoff_hours", "72"),
                            swap_cutoff=get_setting(db, "swap_cutoff_hours", "168"),
+                           admin_email=get_setting(db, "admin_email", ""),
+                           admin_auto_attend=get_setting(db, "admin_auto_attend", "0") == "1",
                            list_public=get_setting(db, "attendee_list_public") == "1")
 
 
@@ -108,6 +110,9 @@ def settings():
     except ValueError:
         swap_cut = 168
     set_setting(db, "swap_cutoff_hours", str(swap_cut))
+    set_setting(db, "admin_email", request.form.get("admin_email", "").strip()[:200])
+    set_setting(db, "admin_auto_attend",
+                "1" if request.form.get("admin_auto_attend") else "0")
     audit(db, "admin", "settings", f"term={term} window={t_open}..{t_close} "
           f"public={request.form.get('attendee_list_public', '0')}")
     flash("Settings saved.", "ok")
@@ -217,6 +222,31 @@ def formal_delete(fid):
     return redirect(url_for("admin.dashboard"))
 
 
+def _seat_admin(db, term):
+    """If auto-attend is on, seat the admin's member account in every formal of
+    the term before the ballot (source='admin'), which reduces each formal's
+    ballot capacity by one. Returns: None (disabled), -1 (no matching member),
+    or the number of new seats reserved."""
+    if get_setting(db, "admin_auto_attend", "0") != "1":
+        return None
+    email = get_setting(db, "admin_email", "").strip().lower()
+    u = db.execute("SELECT id FROM users WHERE email=? AND email_verified=1",
+                   (email,)).fetchone() if email else None
+    if u is None:
+        return -1
+    seated = 0
+    for f in db.execute("SELECT id FROM formals WHERE term=? AND "
+                        "status IN ('open','allocated')", (term,)).fetchall():
+        if not db.execute("SELECT 1 FROM allocations WHERE user_id=? AND formal_id=? "
+                          "AND status='active'", (u["id"], f["id"])).fetchone():
+            db.execute("INSERT INTO allocations(user_id, formal_id, status, source) "
+                       "VALUES (?,?,'active','admin')", (u["id"], f["id"]))
+            seated += 1
+    if seated:
+        audit(db, "admin", "admin_auto_attend", f"term={term} seated={seated}")
+    return seated
+
+
 @bp.route("/allocate", methods=["GET", "POST"])
 @admin_required
 def allocate():
@@ -225,7 +255,14 @@ def allocate():
     if request.method == "POST":
         term = request.form.get("term", term).strip()
         seed = request.form.get("seed", "").strip() or None
+        seated = _seat_admin(db, term)  # reserve the admin's seat first (−1 place each)
         run_id, used_seed, placed, log, new_allocs = run_allocation(db, term, seed)
+        if seated is not None and seated < 0:
+            flash("Auto-attend is on but no verified member matches the admin "
+                  "email — no seats reserved. Set a registered admin email in "
+                  "Settings, or turn auto-attend off.", "error")
+        elif seated:
+            flash(f"Reserved your seat in {seated} formal(s) before the draw.", "ok")
         # First generate of the term? Hold results as a draft until Publish.
         already_public = db.execute(
             "SELECT 1 FROM allocations a JOIN formals f ON f.id=a.formal_id "
@@ -482,6 +519,37 @@ def email_all(fid):
     threading.Thread(target=deliver, daemon=True).start()
     flash(f"Email queued to {len(recipients)} attendee(s) of the "
           f"{f['host_college']} formal.", "ok")
+    return redirect(url_for("admin.roster", fid=fid))
+
+
+@bp.route("/formals/<int:fid>/catering-email", methods=["POST"])
+@admin_required
+def catering_email_now(fid):
+    """Send the host college the attendance list + dietary now (cc admin), and
+    mark it sent so the automatic week-before email won't duplicate it."""
+    from .. import emailer
+    from ..services import catering_list
+    db = get_db()
+    f = db.execute("SELECT * FROM formals WHERE id=?", (fid,)).fetchone()
+    if f is None:
+        return redirect(url_for("admin.dashboard"))
+    rows = catering_list(db, fid)
+    if not rows:
+        flash("No attendees yet — nothing to send.", "error")
+        return redirect(url_for("admin.roster", fid=fid))
+    admin_email = get_setting(db, "admin_email", "").strip()
+    host_email = (f["host_email"] or "").strip()
+    to = host_email or admin_email
+    if not to:
+        flash("Set the host contact email (edit the formal) or an admin email "
+              "(Settings) first.", "error")
+        return redirect(url_for("admin.roster", fid=fid))
+    cc = (admin_email if host_email and admin_email
+          and admin_email.lower() != host_email.lower() else None)
+    emailer.catering_email(to, cc, f, rows)
+    db.execute("UPDATE formals SET catering_sent=1 WHERE id=?", (fid,))
+    audit(db, "admin", "catering_email", f"formal={fid} to={to} cc={cc}")
+    flash(f"Attendance list sent to {to}" + (f" (cc {cc})" if cc else "") + ".", "ok")
     return redirect(url_for("admin.roster", fid=fid))
 
 

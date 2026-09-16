@@ -82,3 +82,58 @@ def test_review_fires_at_1930_even_for_late_formal(db):
     sent = collect(db, day.replace(hour=19, minute=35))
     assert sent == {"reminder": [["u1@pem.cam.ac.uk"]],
                     "review": [["u1@pem.cam.ac.uk"]]}
+
+
+# ---- catering list to host colleges (one week before) -------------------
+
+from swaps.db import set_setting  # noqa: E402
+from swaps.services import free_seats  # noqa: E402
+
+
+def _catering_setup(db, host_email="host@jesus.cam.ac.uk"):
+    add_user(db, 1)
+    add_formal(db, 1, slots=5, dt="2030-05-10 19:30")
+    db.execute("UPDATE formals SET host_email=?, host_college='Jesus'", (host_email,))
+    db.execute("INSERT INTO allocations(user_id, formal_id, status) VALUES (1,1,'active')")
+    set_setting(db, "admin_email", "admin@cam.ac.uk")
+    set_setting(db, "results_published", "1")
+
+
+def _run_catering(db, now):
+    sent = []
+    send_scheduled_emails(db, lambda f, e: None, lambda f, e: None,
+                          lambda f, to, cc, rows: sent.append((to, cc, len(rows))),
+                          now=now)
+    return sent
+
+
+def test_catering_fires_a_week_before_once(db):
+    _catering_setup(db)
+    assert _run_catering(db, datetime(2030, 5, 2, 12)) == []            # 8 days: too early
+    assert _run_catering(db, datetime(2030, 5, 4, 12)) == [
+        ("host@jesus.cam.ac.uk", "admin@cam.ac.uk", 1)]                  # 6 days: fires, cc admin
+    assert _run_catering(db, datetime(2030, 5, 5, 12)) == []            # no duplicate
+
+
+def test_catering_waits_for_publish(db):
+    _catering_setup(db)
+    set_setting(db, "results_published", "0")
+    assert _run_catering(db, datetime(2030, 5, 4, 12)) == []            # unpublished: held
+    set_setting(db, "results_published", "1")
+    assert _run_catering(db, datetime(2030, 5, 4, 12)) == [
+        ("host@jesus.cam.ac.uk", "admin@cam.ac.uk", 1)]
+
+
+def test_catering_without_host_email_goes_to_admin_no_cc(db):
+    _catering_setup(db, host_email="")
+    assert _run_catering(db, datetime(2030, 5, 4, 12)) == [
+        ("admin@cam.ac.uk", None, 1)]
+
+
+def test_admin_auto_attend_reserves_a_seat(db):
+    add_user(db, 1)
+    add_formal(db, 1, slots=3)
+    assert free_seats(db, 1, 3) == 3
+    db.execute("INSERT INTO allocations(user_id, formal_id, status, source) "
+               "VALUES (1,1,'active','admin')")
+    assert free_seats(db, 1, 3) == 2   # the admin's reserved seat is one fewer

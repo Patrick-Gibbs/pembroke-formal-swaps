@@ -594,32 +594,68 @@ def attendee_emails(conn, formal_id):
         (formal_id,)).fetchall()]
 
 
-def send_scheduled_emails(conn, send_reminder, send_review, now=None):
-    """Day-of emails. Called periodically by the worker thread.
+def catering_list(conn, formal_id):
+    """Active attendees of a formal with dietary info (for the host college)."""
+    return conn.execute(
+        "SELECT u.first_name, u.last_name, u.dietary_flags, u.dietary_other "
+        "FROM allocations a JOIN users u ON u.id = a.user_id "
+        "WHERE a.formal_id=? AND a.status='active' "
+        "ORDER BY u.last_name, u.first_name", (formal_id,)).fetchall()
 
-    - 09:00 UK on the day of a formal: courtesy reminder to every attendee
-      (skipped entirely if the formal has already started when we first check,
-      e.g. after prolonged downtime).
-    - 19:30 UK on the day of the formal: review request to every attendee
-      (reviews themselves open from 09:00 that day).
 
-    send_reminder(formal_row, [emails]) / send_review(formal_row, [emails])
-    do the delivery. Flags are flipped inside an immediate transaction first,
-    so emails go at most once even with overlapping calls."""
+CATERING_LEAD_DAYS = 7
+
+
+def send_scheduled_emails(conn, send_reminder, send_review, send_catering=None,
+                          now=None):
+    """Time-based emails. Called periodically by the worker thread.
+
+    - One week before a formal (once results are published and it has
+      attendees): the attendance list + dietary go to the host college, cc the
+      admin_email setting.
+    - 09:00 UK on the day of a formal: courtesy reminder to every attendee.
+    - 19:30 UK on the day of the formal: review request to every attendee.
+
+    Callbacks: send_reminder(f, [emails]), send_review(f, [emails]),
+    send_catering(f, to, cc, rows). Flags are flipped inside an immediate
+    transaction so each email goes at most once."""
     now = now or local_now()
     fired = []
+    published = get_setting(conn, "results_published", "1") == "1"
+    admin_email = get_setting(conn, "admin_email", "").strip()
     rows = conn.execute(
         "SELECT id FROM formals WHERE status IN ('open','allocated') "
-        "AND (reminder_sent=0 OR review_sent=0)").fetchall()
+        "AND (reminder_sent=0 OR review_sent=0 OR catering_sent=0)").fetchall()
     for row in rows:
         f = conn.execute("SELECT * FROM formals WHERE id=?", (row["id"],)).fetchone()
         start = parse_local(f["dt"])
+
+        # Host catering list: once, from a week before up to the formal's start.
+        if (send_catering and not f["catering_sent"]
+                and start - timedelta(days=CATERING_LEAD_DAYS) <= now < start):
+            host_email = (f["host_email"] or "").strip()
+            recipient = host_email or admin_email
+            attendees = catering_list(conn, f["id"])
+            if published and attendees and recipient:
+                with immediate(conn):
+                    fresh = conn.execute("SELECT catering_sent FROM formals WHERE id=?",
+                                         (f["id"],)).fetchone()
+                    do_send = not fresh["catering_sent"]
+                    if do_send:
+                        conn.execute("UPDATE formals SET catering_sent=1 WHERE id=?",
+                                     (f["id"],))
+                if do_send:
+                    cc = (admin_email if host_email and admin_email
+                          and admin_email.lower() != host_email.lower() else None)
+                    send_catering(f, recipient, cc, attendees)
+                    fired.append(("catering", f["id"]))
+
         if start.date() != now.date():
             # Reminder/review are strictly day-of; mark long-past formals done
             # so we stop scanning them.
             if start < now - timedelta(days=1):
-                conn.execute("UPDATE formals SET reminder_sent=1, review_sent=1 "
-                             "WHERE id=?", (f["id"],))
+                conn.execute("UPDATE formals SET reminder_sent=1, review_sent=1, "
+                             "catering_sent=1 WHERE id=?", (f["id"],))
             continue
         nine = start.replace(hour=9, minute=0, second=0, microsecond=0)
         review_at = start.replace(hour=19, minute=30, second=0, microsecond=0)

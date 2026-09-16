@@ -40,13 +40,20 @@ def _send_reviews(formal, emails):
              formal["id"], len(emails))
 
 
+def _send_catering(formal, to, cc, rows):
+    emailer.catering_email(to, cc, formal, rows)
+    log.info("Sent catering list for formal %s to %s (cc %s), %d attendee(s)",
+             formal["id"], to, cc, len(rows))
+
+
 def _loop():
     while True:
         try:
             conn = connect()
             try:
                 open_due_releases(conn, _notify)
-                send_scheduled_emails(conn, _send_reminders, _send_reviews)
+                send_scheduled_emails(conn, _send_reminders, _send_reviews,
+                                      _send_catering)
             finally:
                 conn.close()
         except Exception:

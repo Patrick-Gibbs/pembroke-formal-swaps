@@ -25,9 +25,11 @@
   with the organiser and the host college for catering, via admin-only rosters.</li>
   <li><b>Email delivery:</b> we send email through <a href="https://resend.com">Resend</a>;
   your email address and message contents pass through them to be delivered.</li>
-  <li><b>Chatbot (if enabled):</b> the assistant is powered by Anthropic's API.
-  It is only sent public information about formals — never your email, PIN,
-  dietary details, or contact details.</li>
+  {% if chatbot_enabled %}
+  <li><b>Chatbot:</b> the assistant is powered by Anthropic's API. It is only
+  sent public information about formals — never your email, PIN, dietary
+  details, or contact details.</li>
+  {% endif %}
   <li>We do <b>not</b> sell your data or use third-party advertising or tracking.</li>
 </ul>
 

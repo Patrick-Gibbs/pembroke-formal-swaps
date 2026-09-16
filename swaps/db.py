@@ -32,6 +32,7 @@ def init_db(db_path=None):
                      ("instructions", "TEXT NOT NULL DEFAULT ''"),
                      ("reminder_sent", "INTEGER NOT NULL DEFAULT 0"),
                      ("review_sent", "INTEGER NOT NULL DEFAULT 0"),
+                     ("catering_sent", "INTEGER NOT NULL DEFAULT 0"),
                      ("host_name", "TEXT NOT NULL DEFAULT ''"),
                      ("host_email", "TEXT NOT NULL DEFAULT ''"),
                      ("host_phone", "TEXT NOT NULL DEFAULT ''"),

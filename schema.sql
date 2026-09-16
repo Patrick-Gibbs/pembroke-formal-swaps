@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS formals (
     endowment_m REAL,                       -- host college endowment £m (nullable)
     reminder_sent INTEGER NOT NULL DEFAULT 0,   -- 9am day-of email done
     review_sent INTEGER NOT NULL DEFAULT 0,     -- 9pm review request done
+    catering_sent INTEGER NOT NULL DEFAULT 0,   -- host catering list emailed (1wk before)
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -209,3 +210,5 @@ INSERT OR IGNORE INTO settings(key, value) VALUES ('current_term', '');
 INSERT OR IGNORE INTO settings(key, value) VALUES ('results_published', '1');
 INSERT OR IGNORE INTO settings(key, value) VALUES ('cancel_cutoff_hours', '72');
 INSERT OR IGNORE INTO settings(key, value) VALUES ('swap_cutoff_hours', '168');
+INSERT OR IGNORE INTO settings(key, value) VALUES ('admin_email', '');
+INSERT OR IGNORE INTO settings(key, value) VALUES ('admin_auto_attend', '0');

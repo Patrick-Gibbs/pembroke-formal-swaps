@@ -11,6 +11,11 @@
 <p>
   <button class="btn" type="button" onclick="copyTable('copy-roster', this)">📋 Copy for email</button>
   <a class="btn" href="?csv=1">Export CSV (active attendees)</a>
+  <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/catering-email"
+        onsubmit="return confirm('Email the host college the attendance list + dietary now (cc the admin email)?')">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <button class="btn">✉ Email host the list now</button>
+  </form>
   <a class="btn ghost" href="/admin/">Back</a>
   &nbsp; Free seats now: <b>{{ free }}</b> / {{ f['slots'] }}
 </p>
