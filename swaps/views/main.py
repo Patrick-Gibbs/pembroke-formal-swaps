@@ -301,9 +301,247 @@ def me():
                    for a in allocs}
     past = {a["id"]: (a["status"] == "active" and hours_until_formal(a["dt"]) < 0)
             for a in allocs}
+    cal_url = f"{config.SITE_URL}/calendar/{_calendar_token(db, user)}.ics"
     return render_template("me.html", allocs=allocs, subs=subs,
                            cancellable=cancellable, past=past,
-                           cutoff_h=int(cutoff))
+                           cutoff_h=int(cutoff), cal_url=cal_url)
+
+
+@bp.route("/profile")
+@login_required
+def profile():
+    db = get_db()
+    user = current_user()
+    allocs = db.execute(
+        "SELECT f.host_college, f.dt, f.price, f.term, f.id AS formal_id "
+        "FROM allocations a JOIN formals f ON f.id=a.formal_id "
+        "WHERE a.user_id=? AND a.status='active' ORDER BY f.dt", (user["id"],)).fetchall()
+    upcoming = [a for a in allocs if hours_until_formal(a["dt"]) >= 0]
+    past = [a for a in allocs if hours_until_formal(a["dt"]) < 0]
+    reviews = db.execute(
+        "SELECT r.course_stars, r.vibe_stars, r.review, r.created_at, "
+        "f.host_college, f.dt FROM reviews r JOIN formals f ON f.id=r.formal_id "
+        "WHERE r.user_id=? ORDER BY r.created_at DESC", (user["id"],)).fetchall()
+    reviewed_ids = {r["formal_id"] for r in db.execute(
+        "SELECT formal_id FROM reviews WHERE user_id=?", (user["id"],)).fetchall()}
+    stars = [r["course_stars"] + r["vibe_stars"] for r in reviews]
+    avg_given = round(sum(stars) / len(stars), 1) if stars else None
+    # colleges attended most
+    from collections import Counter
+    fav = Counter(a["host_college"] for a in allocs).most_common(1)
+    return render_template(
+        "profile.html", user=user, upcoming=upcoming, past=past, reviews=reviews,
+        reviewed_ids=reviewed_ids, n_attended=len(past), n_upcoming=len(upcoming),
+        n_reviews=len(reviews), avg_given=avg_given,
+        favourite=fav[0][0] if fav else None)
+
+
+@bp.route("/privacy")
+def privacy():
+    return render_template("privacy.html")
+
+
+def _calendar_token(db, user):
+    """Return the user's private calendar-feed token, generating it on first use."""
+    if user["calendar_token"]:
+        return user["calendar_token"]
+    token = secrets.token_urlsafe(24)
+    db.execute("UPDATE users SET calendar_token=? WHERE id=?", (token, user["id"]))
+    return token
+
+
+@bp.route("/calendar/<token>.ics")
+def calendar_feed(token):
+    from flask import Response
+    from ..ics import feed_ics
+    db = get_db()
+    user = db.execute("SELECT id FROM users WHERE calendar_token=?", (token,)).fetchone()
+    if user is None:
+        abort(404)
+    formals = db.execute(
+        "SELECT f.* FROM allocations a JOIN formals f ON f.id=a.formal_id "
+        "WHERE a.user_id=? AND a.status='active' ORDER BY f.dt", (user["id"],)).fetchall()
+    return Response(feed_ics(formals), mimetype="text/calendar", headers={
+        "Content-Disposition": "inline; filename=formal-swaps.ics"})
+
+
+@bp.route("/account/export.json")
+@login_required
+def account_export():
+    from flask import Response
+    import json
+    from ..services import export_user_data
+    data = export_user_data(get_db(), current_user()["id"])
+    body = json.dumps({"exported_at": local_now().isoformat(),
+                       "site": config.SITE_URL, "your_data": data},
+                      indent=2, default=str)
+    return Response(body, mimetype="application/json", headers={
+        "Content-Disposition": "attachment; filename=my-formal-swaps-data.json"})
+
+
+@bp.route("/account/delete", methods=["POST"])
+@login_required
+def account_delete():
+    from flask import session
+    from ..security import verify_secret
+    from ..services import delete_user_data
+    db = get_db()
+    user = current_user()
+    if not verify_secret(user["pin_hash"], request.form.get("pin", "")):
+        flash("Incorrect PIN — account not deleted.", "error")
+        return redirect(url_for("main.me"))
+    photos = delete_user_data(db, user["id"])
+    for name in photos:
+        try:
+            os.remove(os.path.join(config.PHOTOS_DIR, name))
+        except OSError:
+            pass
+    session.clear()
+    flash("Your account and personal data have been permanently deleted.", "ok")
+    return redirect(url_for("main.index"))
+
+
+def _swaps_published(db):
+    return get_setting(db, "results_published", "1") == "1"
+
+
+@bp.route("/swaps")
+@login_required
+def swaps():
+    db = get_db()
+    uid = current_user()["id"]
+    published = _swaps_published(db)
+    mine = db.execute(
+        "SELECT f.id AS formal_id, f.host_college, f.dt FROM allocations a "
+        "JOIN formals f ON f.id=a.formal_id WHERE a.user_id=? AND a.status='active' "
+        "ORDER BY f.dt", (uid,)).fetchall()
+
+    def hydrate(rows):
+        out = []
+        for r in rows:
+            ff = db.execute("SELECT host_college, dt FROM formals WHERE id=?",
+                            (r["from_formal"],)).fetchone()
+            tf = db.execute("SELECT host_college, dt FROM formals WHERE id=?",
+                            (r["to_formal"],)).fetchone()
+            fu = db.execute("SELECT first_name, last_name FROM users WHERE id=?",
+                            (r["from_user"],)).fetchone()
+            tu = db.execute("SELECT first_name, last_name FROM users WHERE id=?",
+                            (r["to_user"],)).fetchone()
+            out.append({"id": r["id"], "from_formal": ff, "to_formal": tf,
+                        "from_name": f"{fu['first_name']} {fu['last_name']}" if fu else "?",
+                        "to_name": f"{tu['first_name']} {tu['last_name']}" if tu else "?"})
+        return out
+
+    incoming = hydrate(db.execute(
+        "SELECT * FROM swap_requests WHERE to_user=? AND status='pending' "
+        "ORDER BY id DESC", (uid,)).fetchall())
+    outgoing = hydrate(db.execute(
+        "SELECT * FROM swap_requests WHERE from_user=? AND status='pending' "
+        "ORDER BY id DESC", (uid,)).fetchall())
+    return render_template("swaps.html", published=published, mine=mine,
+                           incoming=incoming, outgoing=outgoing)
+
+
+@bp.route("/swaps/holdings")
+@login_required
+def swaps_holdings():
+    from flask import jsonify
+    db = get_db()
+    if not _swaps_published(db):
+        return jsonify([])
+    try:
+        other = int(request.args.get("user", ""))
+    except ValueError:
+        return jsonify([])
+    if other == current_user()["id"]:
+        return jsonify([])
+    rows = db.execute(
+        "SELECT f.id, f.host_college, f.dt FROM allocations a "
+        "JOIN formals f ON f.id=a.formal_id WHERE a.user_id=? AND a.status='active' "
+        "ORDER BY f.dt", (other,)).fetchall()
+    return jsonify([{"formal_id": r["id"],
+                     "label": f"{r['host_college']} — {r['dt']}"} for r in rows])
+
+
+@bp.route("/swaps/propose", methods=["POST"])
+@login_required
+def swaps_propose():
+    from ..services import SwapError, propose_swap
+    from .. import emailer
+    db = get_db()
+    uid = current_user()["id"]
+    if not _swaps_published(db):
+        flash("Swaps open once results are published.", "error")
+        return redirect(url_for("main.swaps"))
+    try:
+        from_formal = int(request.form.get("from_formal", ""))
+        to_user = int(request.form.get("to_user", ""))
+        to_formal = int(request.form.get("to_formal", ""))
+    except ValueError:
+        flash("Choose your place, a person, and the place you want.", "error")
+        return redirect(url_for("main.swaps"))
+    try:
+        propose_swap(db, uid, from_formal, to_user, to_formal)
+    except SwapError as e:
+        flash(str(e), "error")
+        return redirect(url_for("main.swaps"))
+    target = db.execute("SELECT email FROM users WHERE id=?", (to_user,)).fetchone()
+    offer = db.execute("SELECT host_college, dt FROM formals WHERE id=?",
+                       (from_formal,)).fetchone()
+    want = db.execute("SELECT host_college, dt FROM formals WHERE id=?",
+                      (to_formal,)).fetchone()
+    me = current_user()
+    if target:
+        emailer.swap_proposed_email(
+            target["email"], f"{me['first_name']} {me['last_name']}",
+            offer, want, f"{config.SITE_URL}/swaps")
+    flash("Swap request sent.", "ok")
+    return redirect(url_for("main.swaps"))
+
+
+@bp.route("/swaps/<int:req_id>/accept", methods=["POST"])
+@login_required
+def swaps_accept(req_id):
+    from ..services import SwapError, accept_swap
+    from .. import emailer
+    db = get_db()
+    uid = current_user()["id"]
+    try:
+        r = accept_swap(db, req_id, uid)
+    except SwapError as e:
+        flash(str(e), "error")
+        return redirect(url_for("main.swaps"))
+    # Notify both parties of their new/relinquished places.
+    ff = db.execute("SELECT host_college, dt FROM formals WHERE id=?",
+                    (r["from_formal"],)).fetchone()
+    tf = db.execute("SELECT host_college, dt FROM formals WHERE id=?",
+                    (r["to_formal"],)).fetchone()
+    fu = db.execute("SELECT first_name, last_name, email FROM users WHERE id=?",
+                    (r["from_user"],)).fetchone()
+    tu = db.execute("SELECT first_name, last_name, email FROM users WHERE id=?",
+                    (r["to_user"],)).fetchone()
+    if fu:  # proposer now attends to_formal, gave up from_formal
+        emailer.swap_accepted_email(fu["email"], f"{tu['first_name']} {tu['last_name']}",
+                                    tf, ff)
+    if tu:  # accepter now attends from_formal, gave up to_formal
+        emailer.swap_accepted_email(tu["email"], f"{fu['first_name']} {fu['last_name']}",
+                                    ff, tf)
+    flash("Swap complete — your places have been exchanged.", "ok")
+    return redirect(url_for("main.swaps"))
+
+
+@bp.route("/swaps/<int:req_id>/<any(decline,cancel):action>", methods=["POST"])
+@login_required
+def swaps_respond(req_id, action):
+    from ..services import SwapError, respond_swap
+    db = get_db()
+    try:
+        respond_swap(db, req_id, current_user()["id"], action)
+        flash("Swap request " + ("declined." if action == "decline" else "cancelled."),
+              "ok")
+    except SwapError as e:
+        flash(str(e), "error")
+    return redirect(url_for("main.swaps"))
 
 
 @bp.route("/cancel/<int:alloc_id>", methods=["POST"])

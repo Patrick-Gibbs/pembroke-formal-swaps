@@ -48,6 +48,9 @@ def init_db(db_path=None):
     if "party_name" not in gcols:
         conn.execute("ALTER TABLE ballot_groups ADD COLUMN party_name "
                      "TEXT NOT NULL DEFAULT ''")
+    ucols = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
+    if "calendar_token" not in ucols:
+        conn.execute("ALTER TABLE users ADD COLUMN calendar_token TEXT")
     # Migrate legacy single review photo -> review_photos, then clear the column
     # so it won't re-migrate.
     for r in conn.execute("SELECT id, photo FROM reviews WHERE photo != ''").fetchall():

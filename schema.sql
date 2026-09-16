@@ -189,6 +189,17 @@ CREATE TABLE IF NOT EXISTS email_log (
     error TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS swap_requests (
+    id INTEGER PRIMARY KEY,
+    from_user INTEGER NOT NULL REFERENCES users(id),
+    from_formal INTEGER NOT NULL REFERENCES formals(id),
+    to_user INTEGER NOT NULL REFERENCES users(id),
+    to_formal INTEGER NOT NULL REFERENCES formals(id),
+    status TEXT NOT NULL DEFAULT 'pending',   -- pending | accepted | declined | cancelled
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    responded_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL

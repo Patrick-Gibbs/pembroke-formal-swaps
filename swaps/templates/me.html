@@ -45,4 +45,34 @@ the next hour. No cancellations in the {{ cutoff_h }} hours before a formal.</p>
   {% endfor %}
 </table>
 {% else %}<p class="muted">You're not subscribed to any formal. Use “Notify me” on the home page.</p>{% endif %}
+
+<h2>Add to your calendar</h2>
+<div class="card">
+  <p>Subscribe once and every formal you're allocated appears in your calendar
+  automatically (and updates if things change):</p>
+  <p><input type="text" readonly value="{{ cal_url }}" id="cal-url"
+     style="width:100%;max-width:34rem;padding:.4rem;border:1px solid #b8c4d0;border-radius:6px">
+     <button type="button" class="small" onclick="navigator.clipboard.writeText(document.getElementById('cal-url').value); this.textContent='✓ Copied'">Copy</button></p>
+  <p class="muted">In Google/Apple/Outlook Calendar choose “subscribe from URL”
+  and paste this. Keep it private — anyone with this link can see your formals
+  (you can reset it by deleting &amp; re-creating your account).</p>
+</div>
+
+<h2>Your data &amp; privacy</h2>
+<div class="card">
+  <p><a class="btn ghost" href="/account/export.json">⬇ Download my data (JSON)</a>
+  &nbsp;<a class="btn ghost" href="/privacy">Privacy notice</a></p>
+  <p class="muted">Everything we hold about you, machine-readable.</p>
+  <h3>Delete my account</h3>
+  <p class="muted">Permanently erases your account and personal data (profile,
+  preferences, allocations, reviews, photos). This can't be undone; if you lead
+  a ballot group it will be disbanded.</p>
+  <form method="post" action="/account/delete"
+        onsubmit="return confirm('Permanently delete your account and all your data? This cannot be undone.')">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <label>Confirm your PIN to delete</label>
+    <input type="password" name="pin" inputmode="numeric" pattern="\d{4}" maxlength="4" required style="max-width:8rem">
+    <p><button class="danger">Delete my account</button></p>
+  </form>
+</div>
 {% endblock %}

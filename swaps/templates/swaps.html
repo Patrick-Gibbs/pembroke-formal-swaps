@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Swap places — Pembroke Formal Swaps{% endblock %}
+{% block content %}
+<h1>Swap places</h1>
+<p class="muted">Trade one of your formals for someone else's. Both of you must
+agree, and the exchange happens instantly and atomically once they accept.</p>
+
+{% if not published %}
+<div class="card"><p>Peer swaps open once the ballot results have been published.</p></div>
+{% else %}
+
+{% if incoming %}
+<div class="card">
+  <h3>Requests for you</h3>
+  {% for s in incoming %}
+  <p>
+    <b>{{ s['from_name'] }}</b> offers you their place at
+    <b>{{ s['from_formal']['host_college'] }}</b> ({{ s['from_formal']['dt'] }})
+    in exchange for your place at
+    <b>{{ s['to_formal']['host_college'] }}</b> ({{ s['to_formal']['dt'] }}).
+    <form class="inline" method="post" action="/swaps/{{ s['id'] }}/accept"
+          onsubmit="return confirm('Accept this swap? Your places will be exchanged immediately.')">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button class="small">Accept</button>
+    </form>
+    <form class="inline" method="post" action="/swaps/{{ s['id'] }}/decline">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button class="small ghost">Decline</button>
+    </form>
+  </p>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h3>Offer a swap</h3>
+  {% if mine %}
+  <form method="post" action="/swaps/propose">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <label>Give up my place at</label>
+    <select name="from_formal" required>
+      {% for m in mine %}<option value="{{ m['formal_id'] }}">{{ m['host_college'] }} — {{ m['dt'] }}</option>{% endfor %}
+    </select>
+    <label>Swap with (registered member)</label>
+    <input type="text" id="swap-name" autocomplete="off" placeholder="Start typing their name…" style="max-width:22rem">
+    <input type="hidden" name="to_user" id="swap-user">
+    <div id="swap-suggest" style="max-width:22rem"></div>
+    <label>In exchange for their place at</label>
+    <select name="to_formal" id="swap-formal" required><option value="">— pick a person first —</option></select>
+    <p><button>Send swap request</button></p>
+  </form>
+  {% else %}
+  <p class="muted">You don't hold any places to offer yet.</p>
+  {% endif %}
+</div>
+
+{% if outgoing %}
+<div class="card">
+  <h3>Your pending requests</h3>
+  {% for s in outgoing %}
+  <p>
+    You offered <b>{{ s['from_formal']['host_college'] }}</b>
+    ({{ s['from_formal']['dt'] }}) to <b>{{ s['to_name'] }}</b> for their place at
+    <b>{{ s['to_formal']['host_college'] }}</b> ({{ s['to_formal']['dt'] }}).
+    <form class="inline" method="post" action="/swaps/{{ s['id'] }}/cancel">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button class="small ghost">Cancel</button>
+    </form>
+  </p>
+  {% endfor %}
+</div>
+{% endif %}
+
+<script>
+(function () {
+  const name = document.getElementById('swap-name');
+  const uid = document.getElementById('swap-user');
+  const suggest = document.getElementById('swap-suggest');
+  const formalSel = document.getElementById('swap-formal');
+  let timer = null;
+  async function loadHoldings(id) {
+    formalSel.innerHTML = '<option value="">— loading —</option>';
+    const rows = await (await fetch('/swaps/holdings?user=' + encodeURIComponent(id))).json();
+    formalSel.innerHTML = rows.length
+      ? rows.map(r => '<option value="' + r.formal_id + '">' + r.label + '</option>').join('')
+      : '<option value="">(they hold no places to swap)</option>';
+  }
+  name.addEventListener('input', function () {
+    uid.value = ''; formalSel.innerHTML = '<option value="">— pick a person first —</option>';
+    clearTimeout(timer);
+    const q = name.value.trim();
+    if (q.length < 2) { suggest.innerHTML = ''; return; }
+    timer = setTimeout(async function () {
+      const people = await (await fetch('/ballot/search?q=' + encodeURIComponent(q))).json();
+      suggest.innerHTML = '';
+      people.forEach(function (p) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'small ghost';
+        b.style.display = 'block'; b.style.width = '100%'; b.style.margin = '.15rem 0';
+        b.textContent = p.name;
+        b.onclick = function () { name.value = p.name; uid.value = p.id; suggest.innerHTML = ''; loadHoldings(p.id); };
+        suggest.appendChild(b);
+      });
+    }, 250);
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -18,9 +18,9 @@ def _utc(dt_local):
     return dt_local.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
-def formal_ics(formal):
-    """Return .ics file text for one formal (dict/Row with host_college, dt,
-    price, location, instructions)."""
+def _vevent(formal):
+    """VEVENT lines for one formal (dict/Row with id, host_college, dt, price,
+    location, instructions)."""
     start = datetime.fromisoformat(formal["dt"].replace("T", " ")).replace(tzinfo=LONDON)
     end = start + timedelta(hours=EVENT_HOURS)
     location = formal["location"] or f"{formal['host_college']} College, Cambridge"
@@ -30,11 +30,7 @@ def formal_ics(formal):
     if formal["instructions"]:
         desc_parts.append(formal["instructions"])
     desc_parts.append(f"Organised via {config.SITE_URL}")
-    lines = [
-        "BEGIN:VCALENDAR",
-        "VERSION:2.0",
-        "PRODID:-//Pembroke Formal Swaps//EN",
-        "METHOD:PUBLISH",
+    return [
         "BEGIN:VEVENT",
         f"UID:formal-{formal['id']}@pembrokeformalswaps.com",
         f"DTSTAMP:{_utc(datetime.now(LONDON))}",
@@ -49,6 +45,25 @@ def formal_ics(formal):
         f"DESCRIPTION:{_esc('Formal at ' + formal['host_college'] + ' soon')}",
         "END:VALARM",
         "END:VEVENT",
-        "END:VCALENDAR",
     ]
-    return "\r\n".join(lines) + "\r\n"
+
+
+def _wrap(events, method="PUBLISH", name=None):
+    head = ["BEGIN:VCALENDAR", "VERSION:2.0",
+            "PRODID:-//Pembroke Formal Swaps//EN", f"METHOD:{method}"]
+    if name:
+        head += [f"X-WR-CALNAME:{_esc(name)}"]
+    return "\r\n".join(head + events + ["END:VCALENDAR"]) + "\r\n"
+
+
+def formal_ics(formal):
+    """Single-event .ics for email attachments."""
+    return _wrap(_vevent(formal))
+
+
+def feed_ics(formals, name="My formal swaps"):
+    """Multi-event calendar feed a user can subscribe to (auto-updating)."""
+    events = []
+    for f in formals:
+        events += _vevent(f)
+    return _wrap(events, name=name)

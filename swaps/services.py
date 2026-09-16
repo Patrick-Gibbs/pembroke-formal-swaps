@@ -329,6 +329,179 @@ def run_allocation(conn, term, seed=None, actor="admin"):
         return cur.lastrowid, seed, placed, log, new_allocs
 
 
+# ------------------------------------------------------------------ GDPR: export / erase
+
+def export_user_data(conn, user_id):
+    """Everything we hold about a user, as a plain dict (right of access /
+    portability). Joins in readable formal names."""
+    u = conn.execute("SELECT id, first_name, last_name, email, email_verified, "
+                     "dietary_flags, dietary_other, created_at FROM users WHERE id=?",
+                     (user_id,)).fetchone()
+    if u is None:
+        return None
+    d = dict(u)
+
+    def rows(sql, args=(user_id,)):
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+    d["preferences"] = rows(
+        "SELECT p.term, p.rank, f.host_college, f.dt FROM preferences p "
+        "JOIN formals f ON f.id=p.formal_id WHERE p.user_id=? ORDER BY p.term, p.rank")
+    d["max_places_caps"] = rows("SELECT term, max_places FROM ballot_caps WHERE user_id=?")
+    d["allocations"] = rows(
+        "SELECT a.status, a.source, a.created_at, f.host_college, f.dt "
+        "FROM allocations a JOIN formals f ON f.id=a.formal_id WHERE a.user_id=? "
+        "ORDER BY f.dt")
+    d["slot_alerts"] = rows(
+        "SELECT f.host_college, f.dt FROM subscriptions s "
+        "JOIN formals f ON f.id=s.formal_id WHERE s.user_id=?")
+    d["group_memberships"] = rows(
+        "SELECT g.term, g.party_name, m.status, "
+        "(g.leader_user_id=?) AS is_leader FROM ballot_group_members m "
+        "JOIN ballot_groups g ON g.id=m.group_id WHERE m.user_id=?", (user_id, user_id))
+    d["reviews"] = rows(
+        "SELECT f.host_college, f.dt, r.course_stars, r.vibe_stars, r.review, "
+        "r.created_at FROM reviews r JOIN formals f ON f.id=r.formal_id "
+        "WHERE r.user_id=? ORDER BY r.created_at")
+    return d
+
+
+def delete_user_data(conn, user_id):
+    """Erase all of a user's personal data (right to erasure). Returns the list
+    of photo filenames the caller should unlink from disk. A group the user
+    leads is disbanded. Audit-log rows (numeric id only, no name/email) are
+    retained for security/integrity under legitimate interest."""
+    u = conn.execute("SELECT email FROM users WHERE id=?", (user_id,)).fetchone()
+    if u is None:
+        return []
+    photos = [r["filename"] for r in conn.execute(
+        "SELECT rp.filename FROM review_photos rp JOIN reviews r ON r.id=rp.review_id "
+        "WHERE r.user_id=?", (user_id,)).fetchall()]
+    photos += [r["photo"] for r in conn.execute(
+        "SELECT photo FROM reviews WHERE user_id=? AND photo != ''",
+        (user_id,)).fetchall()]  # legacy single-photo column
+    with immediate(conn):
+        # Break released_slots references before deleting allocations.
+        conn.execute("UPDATE released_slots SET claimed_by=NULL WHERE claimed_by=?",
+                     (user_id,))
+        conn.execute("UPDATE released_slots SET allocation_id=NULL WHERE allocation_id "
+                     "IN (SELECT id FROM allocations WHERE user_id=?)", (user_id,))
+        conn.execute("DELETE FROM review_photos WHERE review_id IN "
+                     "(SELECT id FROM reviews WHERE user_id=?)", (user_id,))
+        for t in ("reviews", "preferences", "ballot_caps", "subscriptions",
+                  "allocations", "ballot_group_members"):
+            conn.execute(f"DELETE FROM {t} WHERE user_id=?", (user_id,))  # noqa: S608 fixed names
+        # Disband any group this user leads (remove all its members, then the group).
+        led = [r["id"] for r in conn.execute(
+            "SELECT id FROM ballot_groups WHERE leader_user_id=?", (user_id,)).fetchall()]
+        for gid in led:
+            conn.execute("DELETE FROM ballot_group_members WHERE group_id=?", (gid,))
+            conn.execute("DELETE FROM ballot_groups WHERE id=?", (gid,))
+        conn.execute("DELETE FROM login_attempts WHERE identifier=?", (u["email"],))
+        audit(conn, f"user:{user_id}", "account_deleted", "GDPR erasure")
+        conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+    return photos
+
+
+# ------------------------------------------------------------------ peer-to-peer swaps
+
+class SwapError(Exception):
+    pass
+
+
+def _holds_active(conn, user_id, formal_id):
+    return conn.execute(
+        "SELECT 1 FROM allocations WHERE user_id=? AND formal_id=? AND status='active'",
+        (user_id, formal_id)).fetchone() is not None
+
+
+def _swap_preconditions(conn, from_user, from_formal, to_user, to_formal):
+    """Validate a proposed trade (A's place at from_formal <-> B's place at
+    to_formal). Raises SwapError with a user-facing message."""
+    if from_user == to_user:
+        raise SwapError("You can't swap with yourself.")
+    if from_formal == to_formal:
+        raise SwapError("Pick two different formals.")
+    if not _holds_active(conn, from_user, from_formal):
+        raise SwapError("You no longer hold that place.")
+    if not _holds_active(conn, to_user, to_formal):
+        raise SwapError("The other person no longer holds that place.")
+    if _holds_active(conn, from_user, to_formal):
+        raise SwapError("You already have a place at that formal.")
+    if _holds_active(conn, to_user, from_formal):
+        raise SwapError("The other person already has a place at your formal.")
+    cutoff = cancel_cutoff_hours(conn)
+    for fid in (from_formal, to_formal):
+        dt = conn.execute("SELECT dt FROM formals WHERE id=?", (fid,)).fetchone()
+        if dt is None:
+            raise SwapError("That formal no longer exists.")
+        if hours_until_formal(dt["dt"]) < cutoff:
+            raise SwapError(f"Swaps close {int(cutoff)} hours before either formal.")
+
+
+def propose_swap(conn, from_user, from_formal, to_user, to_formal):
+    _swap_preconditions(conn, from_user, from_formal, to_user, to_formal)
+    dup = conn.execute(
+        "SELECT 1 FROM swap_requests WHERE status='pending' AND from_user=? "
+        "AND from_formal=? AND to_user=? AND to_formal=?",
+        (from_user, from_formal, to_user, to_formal)).fetchone()
+    if dup:
+        raise SwapError("You've already sent this swap request.")
+    cur = conn.execute(
+        "INSERT INTO swap_requests(from_user, from_formal, to_user, to_formal) "
+        "VALUES (?,?,?,?)", (from_user, from_formal, to_user, to_formal))
+    audit(conn, f"user:{from_user}", "swap_propose",
+          f"offer formal {from_formal} for {to_formal} to user {to_user}")
+    return cur.lastrowid
+
+
+def accept_swap(conn, req_id, accepting_user):
+    """Atomically execute the trade. Returns the request row (for emailing)."""
+    with immediate(conn):
+        r = conn.execute("SELECT * FROM swap_requests WHERE id=? AND status='pending'",
+                         (req_id,)).fetchone()
+        if r is None or r["to_user"] != accepting_user:
+            raise SwapError("This swap request is no longer available.")
+        _swap_preconditions(conn, r["from_user"], r["from_formal"],
+                            r["to_user"], r["to_formal"])
+        # Move each place to the other person.
+        conn.execute("UPDATE allocations SET user_id=?, source='swap' "
+                     "WHERE user_id=? AND formal_id=? AND status='active'",
+                     (r["to_user"], r["from_user"], r["from_formal"]))
+        conn.execute("UPDATE allocations SET user_id=?, source='swap' "
+                     "WHERE user_id=? AND formal_id=? AND status='active'",
+                     (r["from_user"], r["to_user"], r["to_formal"]))
+        conn.execute("UPDATE swap_requests SET status='accepted', "
+                     "responded_at=? WHERE id=?", (utcnow_str(), req_id))
+        # Any other pending requests that touch these now-moved places are stale.
+        for uid, fid in ((r["from_user"], r["from_formal"]),
+                         (r["to_user"], r["to_formal"])):
+            conn.execute(
+                "UPDATE swap_requests SET status='cancelled', responded_at=? "
+                "WHERE status='pending' AND id!=? AND "
+                "((from_user=? AND from_formal=?) OR (to_user=? AND to_formal=?))",
+                (utcnow_str(), req_id, uid, fid, uid, fid))
+        audit(conn, f"user:{accepting_user}", "swap_accept",
+              f"req {req_id}: formal {r['from_formal']} <-> {r['to_formal']}")
+        return r
+
+
+def respond_swap(conn, req_id, user_id, action):
+    """Decline (as recipient) or cancel (as proposer) a pending request."""
+    r = conn.execute("SELECT * FROM swap_requests WHERE id=? AND status='pending'",
+                     (req_id,)).fetchone()
+    if r is None:
+        raise SwapError("This swap request is no longer available.")
+    if action == "decline" and r["to_user"] == user_id:
+        status = "declined"
+    elif action == "cancel" and r["from_user"] == user_id:
+        status = "cancelled"
+    else:
+        raise SwapError("You can't do that to this request.")
+    conn.execute("UPDATE swap_requests SET status=?, responded_at=? WHERE id=?",
+                 (status, utcnow_str(), req_id))
+
+
 # ------------------------------------------------------------------ cancel / release
 
 class CancelError(Exception):

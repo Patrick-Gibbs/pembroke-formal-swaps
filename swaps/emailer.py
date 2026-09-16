@@ -147,6 +147,26 @@ def reminder_email(to, formal, ics_files):
         attachments=ics_files)
 
 
+def swap_proposed_email(to, proposer_name, offer_formal, want_formal, link):
+    return send(
+        to, f"{proposer_name} wants to swap formals with you",
+        f"<p><b>{proposer_name}</b> would like to swap places with you:</p>"
+        f"<p>They give you their place at <b>{offer_formal['host_college']}</b> "
+        f"({offer_formal['dt']}) in exchange for your place at "
+        f"<b>{want_formal['host_college']}</b> ({want_formal['dt']}).</p>"
+        f"<p><a href=\"{link}\">Review the request</a> to accept or decline.</p>")
+
+
+def swap_accepted_email(to, other_name, now_attending, gave_up):
+    return send(
+        to, f"Swap confirmed — you're now at {now_attending['host_college']}",
+        f"<p>Your swap with <b>{other_name}</b> is done.</p>"
+        f"<p>You now have a place at <b>{now_attending['host_college']}</b> "
+        f"({now_attending['dt']}), and gave up your place at "
+        f"<b>{gave_up['host_college']}</b> ({gave_up['dt']}).</p>"
+        f"<p>See your places at <a href=\"{config.SITE_URL}/me\">{config.SITE_URL}/me</a>.</p>")
+
+
 def review_request_email(to, formal, link):
     return send(
         to, f"How was the {formal['host_college']} formal?",

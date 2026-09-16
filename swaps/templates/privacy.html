@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Privacy — Pembroke Formal Swaps{% endblock %}
+{% block content %}
+<h1>Privacy</h1>
+<p class="muted">How Pembroke Formal Swaps handles your personal data.</p>
+
+<div class="card">
+<h3>What we collect and why</h3>
+<ul>
+  <li><b>Your name, Cambridge email and 4-digit PIN</b> — to create your account,
+  verify you're a Cambridge member, and log you in. The PIN is stored hashed
+  (argon2id + a server-side pepper), never in plain text.</li>
+  <li><b>Dietary requirements</b> — so host colleges can cater for you.</li>
+  <li><b>Your formal preferences, allocations, group memberships, slot alerts
+  and reviews</b> — to run the ballot and the site's features.</li>
+  <li><b>Basic security logs</b> (login attempts by email/IP) — to rate-limit
+  and protect accounts.</li>
+</ul>
+
+<h3>Who it's shared with</h3>
+<ul>
+  <li><b>Host colleges:</b> once results are published, your <b>name and dietary
+  requirements</b> for a formal you're attending are shared with that college
+  for catering. The public attendee list shows names (and dietary) — never your
+  email or PIN.</li>
+  <li><b>Email delivery:</b> we send email through <a href="https://resend.com">Resend</a>;
+  your email address and message contents pass through them to be delivered.</li>
+  <li><b>Chatbot (if enabled):</b> the assistant is powered by Anthropic's API.
+  It is only sent public information about formals — never your email, PIN,
+  dietary details, or contact details.</li>
+  <li>We do <b>not</b> sell your data or use third-party advertising or tracking.</li>
+</ul>
+
+<h3>Cookies</h3>
+<p>We use a single, strictly-necessary session cookie (HttpOnly, Secure,
+SameSite=Lax) to keep you logged in and protect forms against CSRF. There is no
+advertising or analytics tracking, so no cookie banner is needed.</p>
+
+<h3>Your rights</h3>
+<ul>
+  <li><b>Access / portability:</b> download everything we hold about you as JSON
+  from <a href="/me">My formals</a> → “Your data &amp; privacy”.</li>
+  <li><b>Erasure:</b> delete your account and personal data at any time from the
+  same place. This is immediate and permanent.</li>
+  <li><b>Rectification:</b> update your details by re-registering with the same
+  email, or ask an admin.</li>
+</ul>
+
+<h3>Retention</h3>
+<p>We keep your data while your account is active. When you delete your account,
+your personal data is erased immediately; a minimal, non-identifying audit entry
+(a numeric id and the action) may be retained for security and integrity.
+Database backups are kept for up to 7 days and then rotated out.</p>
+</div>
+{% endblock %}
