@@ -530,7 +530,7 @@ def catering_email_now(fid):
     """Send the host college the attendance list + dietary now (cc admin), and
     mark it sent so the automatic week-before email won't duplicate it."""
     from .. import emailer
-    from ..services import catering_list
+    from ..services import catering_list, catering_recipients
     db = get_db()
     f = db.execute("SELECT * FROM formals WHERE id=?", (fid,)).fetchone()
     if f is None:
@@ -539,19 +539,16 @@ def catering_email_now(fid):
     if not rows:
         flash("No attendees yet — nothing to send.", "error")
         return redirect(url_for("admin.roster", fid=fid))
-    admin_email = get_setting(db, "admin_email", "").strip()
-    host_email = (f["host_email"] or "").strip()
-    to = host_email or admin_email
+    to, cc = catering_recipients(f["host_email"], get_setting(db, "admin_email", ""))
     if not to:
-        flash("Set the host contact email (edit the formal) or an admin email "
+        flash("Set the host contact email(s) (edit the formal) or an admin email "
               "(Settings) first.", "error")
         return redirect(url_for("admin.roster", fid=fid))
-    cc = (admin_email if host_email and admin_email
-          and admin_email.lower() != host_email.lower() else None)
     emailer.catering_email(to, cc, f, rows, get_setting(db, "admin_name", ""))
     db.execute("UPDATE formals SET catering_sent=1 WHERE id=?", (fid,))
     audit(db, "admin", "catering_email", f"formal={fid} to={to} cc={cc}")
-    flash(f"Attendance list sent to {to}" + (f" (cc {cc})" if cc else "") + ".", "ok")
+    flash(f"Attendance list sent to {', '.join(to)}"
+          + (f" (cc {cc})" if cc else "") + ".", "ok")
     return redirect(url_for("admin.roster", fid=fid))
 
 

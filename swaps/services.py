@@ -603,6 +603,19 @@ def catering_list(conn, formal_id):
         "ORDER BY u.last_name, u.first_name", (formal_id,)).fetchall()
 
 
+def catering_recipients(host_email_str, admin_email):
+    """(to_list, cc) for a catering email. `host_email_str` may hold several
+    addresses; all become 'to', the admin is CC'd (unless already a recipient).
+    Falls back to sending straight to the admin when no host email is set."""
+    from .emailer import split_emails
+    hosts = split_emails(host_email_str)
+    admin_email = (admin_email or "").strip()
+    to = hosts or ([admin_email] if admin_email else [])
+    cc = (admin_email if hosts and admin_email
+          and admin_email.lower() not in [h.lower() for h in hosts] else None)
+    return to, cc
+
+
 CATERING_LEAD_DAYS = 7
 
 
@@ -634,10 +647,9 @@ def send_scheduled_emails(conn, send_reminder, send_review, send_catering=None,
         # Host catering list: once, from a week before up to the formal's start.
         if (send_catering and not f["catering_sent"]
                 and start - timedelta(days=CATERING_LEAD_DAYS) <= now < start):
-            host_email = (f["host_email"] or "").strip()
-            recipient = host_email or admin_email
+            to, cc = catering_recipients(f["host_email"], admin_email)
             attendees = catering_list(conn, f["id"])
-            if published and attendees and recipient:
+            if published and attendees and to:
                 with immediate(conn):
                     fresh = conn.execute("SELECT catering_sent FROM formals WHERE id=?",
                                          (f["id"],)).fetchone()
@@ -646,9 +658,7 @@ def send_scheduled_emails(conn, send_reminder, send_review, send_catering=None,
                         conn.execute("UPDATE formals SET catering_sent=1 WHERE id=?",
                                      (f["id"],))
                 if do_send:
-                    cc = (admin_email if host_email and admin_email
-                          and admin_email.lower() != host_email.lower() else None)
-                    send_catering(f, recipient, cc, attendees, admin_name)
+                    send_catering(f, to, cc, attendees, admin_name)
                     fired.append(("catering", f["id"]))
 
         if start.date() != now.date():

@@ -111,7 +111,7 @@ def test_catering_fires_a_week_before_once(db):
     _catering_setup(db)
     assert _run_catering(db, datetime(2030, 5, 2, 12)) == []            # 8 days: too early
     assert _run_catering(db, datetime(2030, 5, 4, 12)) == [
-        ("host@jesus.cam.ac.uk", "admin@cam.ac.uk", 1)]                  # 6 days: fires, cc admin
+        (["host@jesus.cam.ac.uk"], "admin@cam.ac.uk", 1)]               # 6 days: fires, cc admin
     assert _run_catering(db, datetime(2030, 5, 5, 12)) == []            # no duplicate
 
 
@@ -121,13 +121,37 @@ def test_catering_waits_for_publish(db):
     assert _run_catering(db, datetime(2030, 5, 4, 12)) == []            # unpublished: held
     set_setting(db, "results_published", "1")
     assert _run_catering(db, datetime(2030, 5, 4, 12)) == [
-        ("host@jesus.cam.ac.uk", "admin@cam.ac.uk", 1)]
+        (["host@jesus.cam.ac.uk"], "admin@cam.ac.uk", 1)]
 
 
 def test_catering_without_host_email_goes_to_admin_no_cc(db):
     _catering_setup(db, host_email="")
     assert _run_catering(db, datetime(2030, 5, 4, 12)) == [
-        ("admin@cam.ac.uk", None, 1)]
+        (["admin@cam.ac.uk"], None, 1)]
+
+
+def test_catering_multiple_host_emails(db):
+    _catering_setup(db, host_email="jane@jesus.cam.ac.uk, formals@jesus.cam.ac.uk")
+    db.execute("UPDATE formals SET host_name='Jane Smith'")
+    sent = _run_catering(db, datetime(2030, 5, 4, 12))
+    assert sent == [(["jane@jesus.cam.ac.uk", "formals@jesus.cam.ac.uk"],
+                     "admin@cam.ac.uk", 1)]  # all hosts on 'to', admin cc'd
+
+
+def test_catering_and_team_greeting(db):
+    # The rendered email addresses the main contact "and team" when >1 host email.
+    import io, contextlib
+    from swaps import emailer
+    f = {"id": 1, "host_college": "Jesus", "dt": "2030-05-10 19:30",
+         "host_name": "Jane Smith", "host_email": "a@x.ac.uk, b@x.ac.uk"}
+    rows = [{"first_name": "A", "last_name": "B", "dietary_flags": "", "dietary_other": ""}]
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        emailer.catering_email(["a@x.ac.uk", "b@x.ac.uk"], "admin@x.ac.uk", f, rows,
+                               "Patrick Gibbs")
+    out = buf.getvalue()
+    assert "Dear Jane Smith and team," in out
+    assert "— Patrick Gibbs" in out
 
 
 def test_admin_auto_attend_reserves_a_seat(db):

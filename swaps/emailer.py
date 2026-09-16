@@ -1,6 +1,7 @@
 """Single outbound channel: Resend. EMAIL_MODE=dev logs to stdout instead."""
 import base64
 import logging
+import re
 
 import requests
 
@@ -9,6 +10,17 @@ from . import config
 log = logging.getLogger("swaps.email")
 
 RESEND_URL = "https://api.resend.com/emails"
+
+
+def split_emails(s):
+    """Parse a free-text field of one or more emails (comma / semicolon /
+    whitespace separated) into a de-duplicated list, order preserved."""
+    out, seen = [], set()
+    for part in re.split(r"[,;\s]+", (s or "").strip()):
+        if part and part.lower() not in seen:
+            seen.add(part.lower())
+            out.append(part)
+    return out
 
 
 def _record(to, subject, ok, error=""):
@@ -28,18 +40,22 @@ def _record(to, subject, ok, error=""):
 
 
 def send(to, subject, html, attachments=None, cc=None):
-    """Send one email. attachments: [(filename, bytes)]; cc: str or list.
-    Returns True on success. Never raises. Every attempt is recorded in email_log."""
+    """Send one email. `to`/`cc` may be a str or a list of addresses.
+    attachments: [(filename, bytes)]. Returns True on success. Never raises.
+    Every attempt is recorded in email_log."""
+    to_list = [to] if isinstance(to, str) else list(to)
     cc_list = [cc] if isinstance(cc, str) and cc else (cc or [])
+    rec = ", ".join(to_list)
     if config.EMAIL_MODE != "live":
         names = [a[0] for a in (attachments or [])]
         log.info("[dev email] to=%s cc=%s subject=%r attachments=%s",
-                 to, cc_list, subject, names)
-        print(f"--- DEV EMAIL to={to} cc={cc_list} subject={subject!r} "
+                 rec, cc_list, subject, names)
+        print(f"--- DEV EMAIL to={rec} cc={cc_list} subject={subject!r} "
               f"attachments={names} ---\n{html}\n---", flush=True)
-        _record(to, subject, True, "dev mode — not actually sent")
+        _record(rec, subject, True, "dev mode — not actually sent")
         return True
-    payload = {"from": config.MAIL_FROM, "to": [to], "subject": subject, "html": html}
+    payload = {"from": config.MAIL_FROM, "to": to_list, "subject": subject,
+               "html": html}
     if cc_list:
         payload["cc"] = cc_list
     if attachments:
@@ -53,14 +69,14 @@ def send(to, subject, html, attachments=None, cc=None):
             timeout=10,
         )
         if r.status_code // 100 != 2:
-            log.error("Resend error %s for %s: %s", r.status_code, to, r.text[:500])
-            _record(to, subject, False, f"HTTP {r.status_code}: {r.text[:300]}")
+            log.error("Resend error %s for %s: %s", r.status_code, rec, r.text[:500])
+            _record(rec, subject, False, f"HTTP {r.status_code}: {r.text[:300]}")
             return False
-        _record(to, subject, True)
+        _record(rec, subject, True)
         return True
     except requests.RequestException as e:
-        log.error("Resend request failed for %s: %s", to, e)
-        _record(to, subject, False, str(e))
+        log.error("Resend request failed for %s: %s", rec, e)
+        _record(rec, subject, False, str(e))
         return False
 
 
@@ -179,8 +195,14 @@ def catering_email(to, cc, formal, rows, admin_name=""):
         host_name = (formal["host_name"] or "").strip()
     except (KeyError, IndexError):
         host_name = ""
-    greeting = (f"Dear {host_name}," if host_name
-                else f"Dear {formal['host_college']} formals team,")
+    try:
+        multi = len(split_emails(formal["host_email"])) > 1
+    except (KeyError, IndexError):
+        multi = False
+    if host_name:
+        greeting = f"Dear {host_name} and team," if multi else f"Dear {host_name},"
+    else:
+        greeting = f"Dear {formal['host_college']} formals team,"
     signoff = f"— {admin_name}" if admin_name else "— Pembroke Formal Swaps"
     def diet(r):
         parts = list(filter(None, r["dietary_flags"].split(","))) if r["dietary_flags"] else []

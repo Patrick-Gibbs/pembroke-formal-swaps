@@ -25,8 +25,10 @@
   <h3>Host college contact (internal — never shown to members)</h3>
   <label>Host contact name</label>
   <input type="text" name="host_name" placeholder="e.g. Jane Smith, Catering Manager" value="{{ f['host_name'] if f else '' }}">
-  <label>Host contact email</label>
-  <input type="email" name="host_email" value="{{ f['host_email'] if f else '' }}">
+  <label>Host contact email(s) — comma-separate for several; all are emailed the
+  attendance list and the main contact is addressed "and team"</label>
+  <input type="text" name="host_email" value="{{ f['host_email'] if f else '' }}"
+         placeholder="jane@college.cam.ac.uk, formals@college.cam.ac.uk">
   <label>Host contact phone</label>
   <input type="text" name="host_phone" value="{{ f['host_phone'] if f else '' }}">
   <label>Number of slots</label>
