@@ -92,6 +92,77 @@ def _formal_block(f):
     return "".join(parts)
 
 
+# --- Admin-editable templates -------------------------------------------
+# Each has a default subject/body (Python str.format placeholders) that the
+# admin can override on the Email templates page. Security-sensitive emails
+# (verification, PIN reset) are deliberately NOT editable.
+TEMPLATES = {
+    "slot_open": {
+        "label": "Slot opened (to subscribers)",
+        "placeholders": ["host_college", "dt", "link"],
+        "subject": "A place has opened: {host_college} formal on {dt}",
+        "body": "<p>A place has just opened up for the <b>{host_college}</b> "
+                "formal on <b>{dt}</b>.</p>"
+                "<p><a href=\"{link}\">Claim it here</a> — first come, first served.</p>",
+    },
+    "reminder": {
+        "label": "Day-of reminder (to attendees, 9am)",
+        "placeholders": ["host_college", "dt", "time", "formal_block", "review_link"],
+        "subject": "Today: {host_college} formal at {time}",
+        "body": "<p>A friendly reminder — you're going to a formal <b>today</b>:</p>"
+                "{formal_block}"
+                "<p>Have a wonderful evening! And at the end of the formal, remember "
+                "to <a href=\"{review_link}\">leave a review</a>.</p>",
+    },
+    "review_request": {
+        "label": "Review request (to attendees, 7:30pm)",
+        "placeholders": ["host_college", "link"],
+        "subject": "How was the {host_college} formal?",
+        "body": "<p>Hope you enjoyed the <b>{host_college}</b> formal tonight!</p>"
+                "<p><a href=\"{link}\">Rate your experience out of 5 stars</a> — one "
+                "star per good course, two for the vibes — and leave a review or "
+                "photo if you like.</p>",
+    },
+    "no_place": {
+        "label": "No place this time (ballot miss)",
+        "placeholders": ["term", "site"],
+        "subject": "Formal swap ballot result — Pembroke Formal Swaps",
+        "body": "<p>The formal swap ballot for {term} has run, and unfortunately the "
+                "formals you ranked all filled up before your turn — you don't have a "
+                "place this time.</p>"
+                "<p>Places do open up when people cancel: use “Notify me” on any formal "
+                "at <a href=\"{site}\">{site}</a> and you'll get an email the moment a "
+                "place is released — first come, first served.</p>",
+    },
+}
+
+
+def _render_template(key, ctx):
+    """(subject, html) for a template, using the admin override if present and
+    valid, else the code default. Bad overrides fall back to the default so a
+    typo can never break sending."""
+    d = TEMPLATES[key]
+    subject_t, body_t = d["subject"], d["body"]
+    try:
+        from .db import connect
+        conn = connect()
+        try:
+            row = conn.execute("SELECT subject, body FROM email_templates WHERE key=?",
+                               (key,)).fetchone()
+        finally:
+            conn.close()
+        if row and (row["subject"].strip() or row["body"].strip()):
+            subject_t = row["subject"] or subject_t
+            body_t = row["body"] or body_t
+    except Exception:
+        log.exception("could not load email template %s", key)
+    try:
+        return subject_t.format(**ctx), body_t.format(**ctx)
+    except Exception:
+        log.exception("bad override for template %s — using default", key)
+        return d["subject"].format(**ctx), d["body"].format(**ctx)
+
+
 def verification_email(to, link):
     return send(
         to, "Verify your email — Pembroke Formal Swaps",
@@ -120,11 +191,9 @@ def group_invite_email(to, leader_name, term, link):
 
 
 def slot_open_email(to, formal, link):
-    return send(
-        to, f"A place has opened: {formal['host_college']} formal on {formal['dt']}",
-        f"<p>A place has just opened up for the <b>{formal['host_college']}</b> formal "
-        f"on <b>{formal['dt']}</b>.</p>"
-        f"<p><a href=\"{link}\">Claim it here</a> — first come, first served.</p>")
+    subject, body = _render_template("slot_open", {
+        "host_college": formal["host_college"], "dt": formal["dt"], "link": link})
+    return send(to, subject, body)
 
 
 def allocation_result_email(to, formals, ics_files):
@@ -146,25 +215,16 @@ def allocation_result_email(to, formals, ics_files):
 
 
 def no_place_email(to, term):
-    return send(
-        to, "Formal swap ballot result — Pembroke Formal Swaps",
-        f"<p>The formal swap ballot for {term} has run, and unfortunately the "
-        f"formals you ranked all filled up before your turn — you don't have a "
-        f"place this time.</p>"
-        f"<p>Places do open up when people cancel: use “Notify me” on any formal at "
-        f"<a href=\"{config.SITE_URL}\">{config.SITE_URL}</a> and you'll get an "
-        f"email the moment a place is released — first come, first served.</p>")
+    subject, body = _render_template("no_place", {"term": term, "site": config.SITE_URL})
+    return send(to, subject, body)
 
 
 def reminder_email(to, formal, ics_files):
-    review_link = f"{config.SITE_URL}/review/{formal['id']}"
-    return send(
-        to, f"Today: {formal['host_college']} formal at {formal['dt'][11:16]}",
-        f"<p>A friendly reminder — you're going to a formal <b>today</b>:</p>"
-        f"{_formal_block(formal)}"
-        f"<p>Have a wonderful evening! And at the end of the formal, remember "
-        f"to <a href=\"{review_link}\">leave a review</a>.</p>",
-        attachments=ics_files)
+    subject, body = _render_template("reminder", {
+        "host_college": formal["host_college"], "dt": formal["dt"],
+        "time": formal["dt"][11:16], "formal_block": _formal_block(formal),
+        "review_link": f"{config.SITE_URL}/review/{formal['id']}"})
+    return send(to, subject, body, attachments=ics_files)
 
 
 def swap_proposed_email(to, proposer_name, offer_formal, want_formal, link):

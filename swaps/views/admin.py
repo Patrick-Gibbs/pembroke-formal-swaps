@@ -121,6 +121,141 @@ def settings():
     return redirect(url_for("admin.dashboard"))
 
 
+@bp.route("/analytics")
+@admin_required
+def analytics():
+    db = get_db()
+    term = request.args.get("term") or get_setting(db, "current_term")
+    formals = db.execute(
+        "SELECT * FROM formals WHERE term=? ORDER BY dt", (term,)).fetchall()
+    rows = []
+    for f in formals:
+        prefs = db.execute("SELECT COUNT(*) n FROM preferences WHERE formal_id=?",
+                           (f["id"],)).fetchone()["n"]
+        firsts = db.execute("SELECT COUNT(*) n FROM preferences WHERE formal_id=? "
+                            "AND rank=1", (f["id"],)).fetchone()["n"]
+        filled = db.execute("SELECT COUNT(*) n FROM allocations WHERE formal_id=? "
+                            "AND status='active'", (f["id"],)).fetchone()["n"]
+        rows.append({
+            "college": f["host_college"], "dt": f["dt"], "slots": f["slots"],
+            "filled": filled, "free": max(0, f["slots"] - filled),
+            "ranked_by": prefs, "first_choice": firsts,
+            "fill_pct": round(100 * filled / f["slots"]) if f["slots"] else 0,
+            "demand_ratio": round(prefs / f["slots"], 2) if f["slots"] else 0,
+        })
+    # Equity: entered (own prefs or accepted group member of an entered leader)
+    # but hold no active place this term.
+    entrants = {r["id"]: r for r in db.execute(
+        "SELECT DISTINCT u.id, u.first_name, u.last_name, u.email FROM users u "
+        "JOIN preferences p ON p.user_id=u.id WHERE p.term=? AND u.email_verified=1",
+        (term,)).fetchall()}
+    for r in db.execute(
+            "SELECT DISTINCT u.id, u.first_name, u.last_name, u.email FROM users u "
+            "JOIN ballot_group_members m ON m.user_id=u.id AND m.status='accepted' "
+            "JOIN ballot_groups g ON g.id=m.group_id "
+            "JOIN preferences p ON p.user_id=g.leader_user_id AND p.term=g.term "
+            "WHERE g.term=? AND u.email_verified=1", (term,)).fetchall():
+        entrants[r["id"]] = r
+    seated = {r["user_id"] for r in db.execute(
+        "SELECT DISTINCT a.user_id FROM allocations a JOIN formals f ON f.id=a.formal_id "
+        "WHERE a.status='active' AND f.term=?", (term,)).fetchall()}
+    unseated = sorted((u for uid, u in entrants.items() if uid not in seated),
+                      key=lambda u: (u["last_name"], u["first_name"]))
+    totals = {
+        "seats": sum(r["slots"] for r in rows),
+        "filled": sum(r["filled"] for r in rows),
+        "entrants": len(entrants),
+        "seated": len(entrants) - len(unseated),
+    }
+    terms = [r["term"] for r in db.execute(
+        "SELECT DISTINCT term FROM formals ORDER BY term").fetchall()]
+    return render_template("admin/analytics.html", term=term, rows=rows,
+                           unseated=unseated, totals=totals, terms=terms)
+
+
+@bp.route("/email-templates", methods=["GET", "POST"])
+@admin_required
+def email_templates():
+    from ..emailer import TEMPLATES
+    db = get_db()
+    if request.method == "POST":
+        for key in TEMPLATES:
+            subject = request.form.get(f"{key}_subject", "").strip()
+            body = request.form.get(f"{key}_body", "").strip()
+            if subject or body:
+                db.execute(
+                    "INSERT INTO email_templates(key, subject, body) VALUES (?,?,?) "
+                    "ON CONFLICT(key) DO UPDATE SET subject=excluded.subject, "
+                    "body=excluded.body", (key, subject, body))
+            else:  # cleared = revert to the built-in default
+                db.execute("DELETE FROM email_templates WHERE key=?", (key,))
+        audit(db, "admin", "email_templates", "updated")
+        flash("Email templates saved.", "ok")
+        return redirect(url_for("admin.email_templates"))
+    overrides = {r["key"]: r for r in db.execute(
+        "SELECT key, subject, body FROM email_templates").fetchall()}
+    items = []
+    for key, d in TEMPLATES.items():
+        ov = overrides.get(key)
+        items.append({
+            "key": key, "label": d["label"],
+            "placeholders": d["placeholders"],
+            "subject": ov["subject"] if ov else d["subject"],
+            "body": ov["body"] if ov else d["body"],
+            "default_subject": d["subject"], "default_body": d["body"],
+            "customised": bool(ov),
+        })
+    return render_template("admin/email_templates.html", items=items)
+
+
+@bp.route("/terms", methods=["GET", "POST"])
+@admin_required
+def terms():
+    db = get_db()
+    if request.method == "POST":
+        new_term = request.form.get("new_term", "").strip()
+        if new_term:
+            if new_term != get_setting(db, "current_term"):
+                set_setting(db, "results_published", "0")
+            set_setting(db, "current_term", new_term)
+            audit(db, "admin", "term_rollover", f"current_term={new_term}")
+            flash(f"Current term is now “{new_term}”. Add its formals, then open "
+                  "the ballot in Settings.", "ok")
+        return redirect(url_for("admin.terms"))
+    current = get_setting(db, "current_term")
+    rows = db.execute(
+        "SELECT term, COUNT(*) formals, SUM(slots) seats FROM formals "
+        "GROUP BY term ORDER BY MIN(dt) DESC").fetchall()
+    stats = []
+    for r in rows:
+        attending = db.execute(
+            "SELECT COUNT(*) n FROM allocations a JOIN formals f ON f.id=a.formal_id "
+            "WHERE f.term=? AND a.status='active'", (r["term"],)).fetchone()["n"]
+        stats.append({"term": r["term"], "formals": r["formals"],
+                      "seats": r["seats"] or 0, "attending": attending,
+                      "current": r["term"] == current})
+    return render_template("admin/terms.html", stats=stats, current=current)
+
+
+@bp.route("/backup.db")
+@admin_required
+def backup_db():
+    import sqlite3
+    import tempfile
+    from flask import send_file
+    from datetime import datetime, timezone
+    src = get_db()
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    dst = sqlite3.connect(tmp.name)
+    src.backup(dst)   # consistent, WAL-safe online copy
+    dst.close()
+    audit(src, "admin", "backup_download", "")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return send_file(tmp.name, mimetype="application/octet-stream",
+                     as_attachment=True, download_name=f"swaps-backup-{stamp}.db")
+
+
 def _formal_from_form():
     return (request.form.get("host_college", "").strip(),
             request.form.get("dt", "").replace("T", " ").strip(),
@@ -222,6 +357,70 @@ def formal_delete(fid):
     audit(db, "admin", "formal_delete", f"id={fid}")
     flash("Deleted.", "ok")
     return redirect(url_for("admin.dashboard"))
+
+
+@bp.route("/formals/<int:fid>/duplicate", methods=["POST"])
+@admin_required
+def formal_duplicate(fid):
+    db = get_db()
+    f = db.execute("SELECT * FROM formals WHERE id=?", (fid,)).fetchone()
+    if f is None:
+        return redirect(url_for("admin.dashboard"))
+    db.execute(
+        "INSERT INTO formals(host_college, dt, price, slots, term, ballot_open, "
+        "ballot_close, status, location, instructions, host_name, host_email, "
+        "host_phone, endowment_m) SELECT host_college, dt, price, slots, term, "
+        "ballot_open, ballot_close, 'open', location, instructions, host_name, "
+        "host_email, host_phone, endowment_m FROM formals WHERE id=?", (fid,))
+    audit(db, "admin", "formal_duplicate", f"from={fid}")
+    flash(f"Duplicated {f['host_college']} — edit the copy's date as needed.", "ok")
+    return redirect(url_for("admin.dashboard"))
+
+
+@bp.route("/formals/import", methods=["GET", "POST"])
+@admin_required
+def formals_import():
+    db = get_db()
+    if request.method == "POST":
+        raw = request.form.get("csv", "")
+        if not raw.strip():
+            file = request.files.get("file")
+            raw = file.read().decode("utf-8", "replace") if file and file.filename else ""
+        created, errors = 0, []
+        reader = csv.DictReader(io.StringIO(raw))
+        for i, row in enumerate(reader, start=2):  # row 1 = header
+            r = {(k or "").strip().lower(): (v or "").strip()
+                 for k, v in row.items()}
+            college = r.get("host_college") or r.get("college")
+            dt = (r.get("dt") or r.get("date") or "").replace("T", " ")
+            try:
+                slots = int(r.get("slots") or 0)
+            except ValueError:
+                slots = 0
+            if not college or not dt or slots < 1:
+                errors.append(f"row {i}: need host_college, dt, and slots ≥ 1")
+                continue
+            db.execute(
+                "INSERT INTO formals(host_college, dt, price, slots, term, "
+                "ballot_open, ballot_close, status, location, instructions, "
+                "host_name, host_email, host_phone) "
+                "VALUES (?,?,?,?,?,?,?,'open',?,?,?,?,?)",
+                (college, dt, r.get("price", ""), slots,
+                 r.get("term") or get_setting(db, "current_term"),
+                 (r.get("ballot_open") or "").replace("T", " "),
+                 (r.get("ballot_close") or "").replace("T", " "),
+                 r.get("location", ""), r.get("instructions", ""),
+                 r.get("host_name", ""), r.get("host_email", ""),
+                 r.get("host_phone", "")))
+            created += 1
+        if created:
+            audit(db, "admin", "formals_import", f"created={created}")
+            flash(f"Imported {created} formal(s).", "ok")
+        for e in errors[:10]:
+            flash(e, "error")
+        if created and not errors:
+            return redirect(url_for("admin.dashboard"))
+    return render_template("admin/formals_import.html")
 
 
 def _seat_admin(db, term):

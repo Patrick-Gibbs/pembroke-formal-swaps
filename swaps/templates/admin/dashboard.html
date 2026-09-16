@@ -23,12 +23,17 @@
   <a class="btn" href="/admin/allocate">Generate allocation</a>
   <a class="btn" href="/admin/preview">Preview rosters</a>
   <a class="btn" href="/admin/incoming">Incoming swaps</a>
+  <a class="btn ghost" href="/admin/analytics">Analytics</a>
+  <a class="btn ghost" href="/admin/terms">Terms</a>
+  <a class="btn ghost" href="/admin/formals/import">Import formals (CSV)</a>
+  <a class="btn ghost" href="/admin/email-templates">Email templates</a>
   <a class="btn ghost" href="/admin/runs">Allocation runs</a>
   <a class="btn ghost" href="/admin/users">Users ({{ users_n }})</a>
   <a class="btn ghost" href="/admin/subscriptions">Subscriptions &amp; releases</a>
   <a class="btn ghost" href="/admin/audit">Audit log</a>
   <a class="btn ghost" href="/admin/emails">Email log</a>
   <a class="btn ghost" href="/admin/export.csv{% if term %}?term={{ term|urlencode }}{% endif %}">Export all rosters (CSV)</a>
+  <a class="btn ghost" href="/admin/backup.db">Download backup</a>
   <button class="btn ghost" type="button" onclick="copyTable('copy-all-rosters', this)">📋 Copy all rosters</button>
   {% if results_published %}
   <form method="post" action="/admin/republish" class="inline"
@@ -107,6 +112,10 @@
     <td>
       <a class="btn" style="font-size:.8rem;padding:.15rem .5rem" href="/admin/formals/{{ f['id'] }}/roster">Roster</a>
       <a class="btn ghost" style="font-size:.8rem;padding:.15rem .5rem" href="/admin/formals/{{ f['id'] }}/edit">Edit</a>
+      <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/duplicate">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <button class="small ghost">Duplicate</button>
+      </form>
       <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/delete"
             onsubmit="return confirm('Delete this formal and all its data?')">
         <input type="hidden" name="_csrf" value="{{ csrf_token() }}">

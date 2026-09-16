@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Analytics — Admin{% endblock %}
+{% block content %}
+<h1>Analytics — {{ term or '(no term)' }}</h1>
+<p>
+  <a class="btn ghost" href="/admin/">Back</a>
+  {% if terms %}
+  <form class="inline" method="get" action="/admin/analytics">
+    <select name="term" onchange="this.form.submit()">
+      {% for t in terms %}<option value="{{ t }}" {% if t == term %}selected{% endif %}>{{ t }}</option>{% endfor %}
+    </select>
+  </form>
+  {% endif %}
+</p>
+
+<div class="card">
+  <p style="display:flex;flex-wrap:wrap;gap:1.5rem;margin:0">
+    <span><b style="font-size:1.4rem">{{ totals['filled'] }}/{{ totals['seats'] }}</b><br><span class="muted">seats filled</span></span>
+    <span><b style="font-size:1.4rem">{{ totals['entrants'] }}</b><br><span class="muted">members entered</span></span>
+    <span><b style="font-size:1.4rem">{{ totals['seated'] }}</b><br><span class="muted">got ≥1 swap</span></span>
+    <span><b style="font-size:1.4rem">{{ totals['entrants'] - totals['seated'] }}</b><br><span class="muted">got nothing</span></span>
+  </p>
+</div>
+
+<h2>Demand vs capacity</h2>
+{% if rows %}
+<table>
+  <tr><th>College</th><th>Date</th><th>Slots</th><th>Filled</th><th>Free</th>
+      <th>Fill %</th><th>Ranked by</th><th>1st choices</th><th>Demand ×</th></tr>
+  {% for r in rows %}
+  <tr>
+    <td>{{ r['college'] }}</td><td>{{ r['dt'] }}</td><td>{{ r['slots'] }}</td>
+    <td>{{ r['filled'] }}</td><td>{{ r['free'] }}</td><td>{{ r['fill_pct'] }}%</td>
+    <td>{{ r['ranked_by'] }}</td><td>{{ r['first_choice'] }}</td>
+    <td{% if r['demand_ratio'] > 1 %} style="font-weight:bold;color:var(--err)"{% endif %}>{{ r['demand_ratio'] }}</td>
+  </tr>
+  {% endfor %}
+</table>
+<p class="muted">“Demand ×” = members who ranked the formal ÷ its slots. Above 1
+means oversubscribed. “1st choices” = how many put it top.</p>
+{% else %}<p class="muted">No formals for this term.</p>{% endif %}
+
+<h2>Members who entered but got nothing ({{ unseated|length }})</h2>
+{% if unseated %}
+<table>
+  <tr><th>Name</th><th>Email</th></tr>
+  {% for u in unseated %}
+  <tr><td>{{ u['first_name'] }} {{ u['last_name'] }}</td><td>{{ u['email'] }}</td></tr>
+  {% endfor %}
+</table>
+<p class="muted">Useful for fairness — consider these first if places open up.</p>
+{% else %}<p class="muted">Everyone who entered got at least one swap. 🎉</p>{% endif %}
+{% endblock %}

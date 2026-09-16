@@ -201,6 +201,12 @@ CREATE TABLE IF NOT EXISTS swap_requests (
     responded_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS email_templates (
+    key TEXT PRIMARY KEY,
+    subject TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL

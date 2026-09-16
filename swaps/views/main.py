@@ -334,6 +334,66 @@ def robots():
     return Response("User-agent: *\nDisallow: /\n", mimetype="text/plain")
 
 
+# ---- PWA (installable) --------------------------------------------------
+_ICON_CACHE = {}
+
+
+@bp.route("/manifest.webmanifest")
+def manifest():
+    from flask import Response
+    import json
+    data = {
+        "name": "Pembroke Formal Swaps", "short_name": "Formal Swaps",
+        "start_url": "/", "scope": "/", "display": "standalone",
+        "background_color": "#ffffff", "theme_color": "#003b6f",
+        "icons": [
+            {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png",
+             "purpose": "any maskable"},
+        ],
+    }
+    return Response(json.dumps(data), mimetype="application/manifest+json")
+
+
+@bp.route("/sw.js")
+def service_worker():
+    from flask import Response
+    js = ("self.addEventListener('install', e => self.skipWaiting());\n"
+          "self.addEventListener('activate', e => self.clients.claim());\n"
+          "self.addEventListener('fetch', e => {});\n")
+    return Response(js, mimetype="application/javascript")
+
+
+@bp.route("/icon-<int:size>.png")
+def app_icon(size):
+    from flask import Response, abort
+    if size not in (192, 512):
+        abort(404)
+    if size not in _ICON_CACHE:
+        import io
+        from PIL import Image, ImageDraw, ImageFont
+        img = Image.new("RGB", (size, size), (0, 59, 111))
+        d = ImageDraw.Draw(img)
+        font = None
+        for path in ("DejaVuSans-Bold.ttf",
+                     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"):
+            try:
+                font = ImageFont.truetype(path, int(size * 0.5)); break
+            except OSError:
+                continue
+        if font:
+            bb = d.textbbox((0, 0), "PS", font=font)
+            d.text(((size - (bb[2] - bb[0])) / 2 - bb[0],
+                    (size - (bb[3] - bb[1])) / 2 - bb[1]), "PS", fill="white", font=font)
+        else:  # font-free fallback: a white "plate"
+            m = size * 0.24
+            d.ellipse([m, m, size - m, size - m], fill="white")
+        buf = io.BytesIO(); img.save(buf, "PNG")
+        _ICON_CACHE[size] = buf.getvalue()
+    return Response(_ICON_CACHE[size], mimetype="image/png",
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
 @bp.route("/privacy")
 def privacy():
     return render_template("privacy.html")

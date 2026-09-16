@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Email templates — Admin{% endblock %}
+{% block content %}
+<h1>Email templates</h1>
+<p><a class="btn ghost" href="/admin/">Back</a></p>
+<p class="muted">Customise the wording of these emails. Leave a field blank to
+use the built-in default. Use the <code>{placeholder}</code> tokens listed under
+each — a mistyped placeholder safely falls back to the default. Security emails
+(verification, PIN reset) aren't editable.</p>
+
+<form method="post" action="/admin/email-templates">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  {% for t in items %}
+  <div class="card">
+    <h3>{{ t['label'] }} {% if t['customised'] %}<span class="muted">(customised)</span>{% endif %}</h3>
+    <p class="muted">Placeholders: {% for p in t['placeholders'] %}<code>{{ '{' }}{{ p }}{{ '}' }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+    <label>Subject</label>
+    <input type="text" name="{{ t['key'] }}_subject" value="{{ t['subject'] }}"
+           style="width:100%;max-width:44rem">
+    <label>Body (HTML)</label>
+    <textarea name="{{ t['key'] }}_body" rows="5"
+      style="width:100%;max-width:44rem;padding:.5rem;border:1px solid #b8c4d0;border-radius:6px;font-family:monospace">{{ t['body'] }}</textarea>
+  </div>
+  {% endfor %}
+  <p><button>Save templates</button></p>
+</form>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Terms — Admin{% endblock %}
+{% block content %}
+<h1>Terms</h1>
+<p><a class="btn ghost" href="/admin/">Back</a></p>
+
+<div class="card">
+  <h3>Start / switch the current term</h3>
+  <form method="post" action="/admin/terms">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <label>Current term name</label>
+    <input type="text" name="new_term" value="{{ current }}" placeholder="e.g. Lent 2027">
+    <p class="muted">Changing this starts a fresh cycle (results reset to
+    unpublished). Then add the term's formals (or duplicate/import them) and set
+    the ballot window in Settings.</p>
+    <p><button>Set current term</button></p>
+  </form>
+</div>
+
+<h2>All terms</h2>
+{% if stats %}
+<table>
+  <tr><th>Term</th><th>Formals</th><th>Seats</th><th>Attending</th><th></th></tr>
+  {% for s in stats %}
+  <tr>
+    <td>{{ s['term'] }} {% if s['current'] %}<span class="muted">(current)</span>{% endif %}</td>
+    <td>{{ s['formals'] }}</td><td>{{ s['seats'] }}</td><td>{{ s['attending'] }}</td>
+    <td>
+      <a class="btn ghost" style="font-size:.8rem;padding:.15rem .5rem" href="/admin/analytics?term={{ s['term']|urlencode }}">Analytics</a>
+      <a class="btn ghost" style="font-size:.8rem;padding:.15rem .5rem" href="/admin/export.csv?term={{ s['term']|urlencode }}">Export CSV</a>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}<p class="muted">No formals yet.</p>{% endif %}
+{% endblock %}

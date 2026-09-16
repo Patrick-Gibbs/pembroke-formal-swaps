@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Import formals — Admin{% endblock %}
+{% block content %}
+<h1>Import formals (CSV)</h1>
+<p><a class="btn ghost" href="/admin/">Back</a></p>
+<div class="card">
+  <p class="muted">One formal per row. Required columns: <b>host_college</b>,
+  <b>dt</b> (YYYY-MM-DD HH:MM), <b>slots</b>. Optional: price, term (defaults to
+  the current term), ballot_open, ballot_close, location, instructions,
+  host_name, host_email, host_phone. All imported formals start as “open”.</p>
+  <p class="muted">Example:</p>
+  <pre style="background:var(--lt);padding:.6rem;border-radius:6px;overflow-x:auto">host_college,dt,slots,price,host_name,host_email
+Jesus,2026-11-27 19:30,12,£18,Jane Smith,formals@jesus.cam.ac.uk
+Clare,2026-12-04 19:30,8,£16,,</pre>
+  <form method="post" enctype="multipart/form-data">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <label>Upload a .csv file</label>
+    <input type="file" name="file" accept=".csv,text/csv">
+    <label>…or paste CSV here</label>
+    <textarea name="csv" rows="8" style="width:100%;max-width:44rem;padding:.5rem;border:1px solid #b8c4d0;border-radius:6px;font-family:monospace"></textarea>
+    <p><button>Import</button></p>
+  </form>
+</div>
+{% endblock %}
