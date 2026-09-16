@@ -2,6 +2,17 @@
 {% block title %}My formals — Pembroke Formal Swaps{% endblock %}
 {% block content %}
 <h1>My formals</h1>
+
+<div class="card">
+  <p style="display:flex;flex-wrap:wrap;gap:1.5rem;margin:0">
+    <span><b style="font-size:1.4rem">{{ stats['attended'] }}</b><br><span class="muted">attended</span></span>
+    <span><b style="font-size:1.4rem">{{ stats['upcoming'] }}</b><br><span class="muted">upcoming</span></span>
+    <span><b style="font-size:1.4rem">{{ stats['reviews'] }}</b><br><span class="muted">reviews written</span></span>
+    <span><b style="font-size:1.4rem">{{ stats['avg_given'] if stats['avg_given'] is not none else '—' }}</b><br><span class="muted">avg stars you give</span></span>
+    {% if stats['favourite'] %}<span><b style="font-size:1.1rem">{{ stats['favourite'] }}</b><br><span class="muted">most attended</span></span>{% endif %}
+  </p>
+</div>
+
 {% if not allocs %}<p>No places yet. <a href="/rank">Rank formals</a> before the ballot closes, or claim a free place from the <a href="/">home page</a>.</p>{% endif %}
 {% if allocs %}
 <table>
@@ -20,7 +31,8 @@
         <button class="small danger">Cancel</button>
       </form>
       {% elif past[a['id']] %}
-      <a class="btn" style="font-size:.8rem;padding:.15rem .5rem" href="/review/{{ a['formal_id'] }}">Rate it ★</a>
+      {% if a['formal_id'] in reviewed_ids %}<a class="btn ghost" style="font-size:.8rem;padding:.15rem .5rem" href="/review/{{ a['formal_id'] }}">Edit review</a>
+      {% else %}<a class="btn" style="font-size:.8rem;padding:.15rem .5rem" href="/review/{{ a['formal_id'] }}">Rate it ★</a>{% endif %}
       {% elif a['status'] == 'active' %}
       <span class="muted">within {{ cutoff_h }}h — can't cancel</span>
       {% endif %}
@@ -45,6 +57,18 @@ the next hour. No cancellations in the {{ cutoff_h }} hours before a formal.</p>
   {% endfor %}
 </table>
 {% else %}<p class="muted">You're not subscribed to any formal. Use “Notify me” on the home page.</p>{% endif %}
+
+<h2>Your reviews</h2>
+{% if reviews %}
+{% for r in reviews %}
+<div class="card">
+  <p><b>{{ r['host_college'] }}</b> — {{ r['dt'][:10] }}
+  <span style="color:#c9a227">{% for i in range(r['course_stars']) %}★{% endfor %}</span><span style="color:#8e9aa8">{% for i in range(r['vibe_stars']) %}★{% endfor %}</span>
+  <span class="muted">({{ r['course_stars'] + r['vibe_stars'] }}/5)</span></p>
+  {% if r['review'] %}<p>{{ r['review'] }}</p>{% endif %}
+</div>
+{% endfor %}
+{% else %}<p class="muted">You haven't written any reviews yet — you can review a formal after you've attended it.</p>{% endif %}
 
 <h2>Add to your calendar</h2>
 <div class="card">

@@ -296,39 +296,36 @@ def me():
                    for a in allocs}
     past = {a["id"]: (a["status"] == "active" and hours_until_formal(a["dt"]) < 0)
             for a in allocs}
+    reviewed_ids = {r["formal_id"] for r in db.execute(
+        "SELECT formal_id FROM reviews WHERE user_id=?", (user["id"],)).fetchall()}
     cal_url = f"{config.SITE_URL}/calendar/{_calendar_token(db, user)}.ics"
+
+    # Profile/history stats (merged in from the old /profile page).
+    active = [a for a in allocs if a["status"] == "active"]
+    reviews = db.execute(
+        "SELECT r.course_stars, r.vibe_stars, r.review, r.created_at, "
+        "f.host_college, f.dt FROM reviews r JOIN formals f ON f.id=r.formal_id "
+        "WHERE r.user_id=? ORDER BY r.created_at DESC", (user["id"],)).fetchall()
+    stars = [r["course_stars"] + r["vibe_stars"] for r in reviews]
+    from collections import Counter
+    fav = Counter(a["host_college"] for a in active).most_common(1)
+    stats = {
+        "attended": sum(1 for a in active if hours_until_formal(a["dt"]) < 0),
+        "upcoming": sum(1 for a in active if hours_until_formal(a["dt"]) >= 0),
+        "reviews": len(reviews),
+        "avg_given": round(sum(stars) / len(stars), 1) if stars else None,
+        "favourite": fav[0][0] if fav else None,
+    }
     return render_template("me.html", allocs=allocs, subs=subs,
-                           cancellable=cancellable, past=past,
-                           cutoff_h=int(cutoff), cal_url=cal_url)
+                           cancellable=cancellable, past=past, reviewed_ids=reviewed_ids,
+                           cutoff_h=int(cutoff), cal_url=cal_url,
+                           reviews=reviews, stats=stats)
 
 
 @bp.route("/profile")
 @login_required
 def profile():
-    db = get_db()
-    user = current_user()
-    allocs = db.execute(
-        "SELECT f.host_college, f.dt, f.price, f.term, f.id AS formal_id "
-        "FROM allocations a JOIN formals f ON f.id=a.formal_id "
-        "WHERE a.user_id=? AND a.status='active' ORDER BY f.dt", (user["id"],)).fetchall()
-    upcoming = [a for a in allocs if hours_until_formal(a["dt"]) >= 0]
-    past = [a for a in allocs if hours_until_formal(a["dt"]) < 0]
-    reviews = db.execute(
-        "SELECT r.course_stars, r.vibe_stars, r.review, r.created_at, "
-        "f.host_college, f.dt FROM reviews r JOIN formals f ON f.id=r.formal_id "
-        "WHERE r.user_id=? ORDER BY r.created_at DESC", (user["id"],)).fetchall()
-    reviewed_ids = {r["formal_id"] for r in db.execute(
-        "SELECT formal_id FROM reviews WHERE user_id=?", (user["id"],)).fetchall()}
-    stars = [r["course_stars"] + r["vibe_stars"] for r in reviews]
-    avg_given = round(sum(stars) / len(stars), 1) if stars else None
-    # colleges attended most
-    from collections import Counter
-    fav = Counter(a["host_college"] for a in allocs).most_common(1)
-    return render_template(
-        "profile.html", user=user, upcoming=upcoming, past=past, reviews=reviews,
-        reviewed_ids=reviewed_ids, n_attended=len(past), n_upcoming=len(upcoming),
-        n_reviews=len(reviews), avg_given=avg_given,
-        favourite=fav[0][0] if fav else None)
+    return redirect(url_for("main.me"))  # merged into My formals
 
 
 @bp.route("/robots.txt")
