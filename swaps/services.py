@@ -31,6 +31,13 @@ def parse_local(s):
     return datetime.fromisoformat(s.replace("T", " "))
 
 
+def _local_to_utc_str(dt_local):
+    """Naive Europe/London datetime -> 'YYYY-MM-DD HH:MM:SS' in UTC (how
+    released_slots timestamps are stored, matching datetime('now'))."""
+    return (dt_local.replace(tzinfo=LONDON).astimezone(timezone.utc)
+            .strftime("%Y-%m-%d %H:%M:%S"))
+
+
 def hours_until_formal(formal_dt_str):
     return (parse_local(formal_dt_str) - local_now()).total_seconds() / 3600
 
@@ -55,11 +62,31 @@ def swap_cutoff_hours(conn):
         return config.SWAP_CUTOFF_HOURS
 
 
-def pending_holds(conn, formal_id):
+PRIORITY_ADVANTAGE_HOURS = 2   # head start for members who missed all allocations
+RELEASE_DAY_START = 9          # only open/notify released slots 09:00–19:00 local
+RELEASE_DAY_END = 19
+
+
+def daytime_clamp(dt_local):
+    """Move an instant into the 09:00–19:00 local window so we never email at
+    night: before 9 → 9am same day; at/after 19:00 → 9am next day."""
+    if dt_local.hour < RELEASE_DAY_START:
+        return dt_local.replace(hour=RELEASE_DAY_START, minute=0, second=0, microsecond=0)
+    if dt_local.hour >= RELEASE_DAY_END:
+        nxt = dt_local + timedelta(days=1)
+        return nxt.replace(hour=RELEASE_DAY_START, minute=0, second=0, microsecond=0)
+    return dt_local
+
+
+def pending_holds(conn, formal_id, priority=False):
+    """Unclaimed released seats not yet available to this audience. Priority
+    claimers (who missed all allocations) get them from release_at; everyone
+    else only from general_at (release_at + advantage window)."""
     now = utcnow_str()
+    col = "release_at" if priority else "COALESCE(general_at, release_at)"
     return conn.execute(
-        "SELECT COUNT(*) AS n FROM released_slots "
-        "WHERE formal_id=? AND claimed_by IS NULL AND release_at > ?",
+        f"SELECT COUNT(*) AS n FROM released_slots "  # noqa: S608 - fixed column expr
+        f"WHERE formal_id=? AND claimed_by IS NULL AND {col} > ?",
         (formal_id, now)).fetchone()["n"]
 
 
@@ -69,11 +96,21 @@ def active_count(conn, formal_id):
         (formal_id,)).fetchone()["n"]
 
 
-def free_seats(conn, formal_id, slots=None):
+def user_missed_all(conn, user_id, term):
+    """True if the user holds no active place anywhere in the term — the group
+    that gets the priority head start on released slots."""
+    return conn.execute(
+        "SELECT 1 FROM allocations a JOIN formals f ON f.id=a.formal_id "
+        "WHERE a.user_id=? AND a.status='active' AND f.term=? LIMIT 1",
+        (user_id, term)).fetchone() is None
+
+
+def free_seats(conn, formal_id, slots=None, priority=False):
     if slots is None:
         slots = conn.execute("SELECT slots FROM formals WHERE id=?",
                              (formal_id,)).fetchone()["slots"]
-    return max(0, slots - active_count(conn, formal_id) - pending_holds(conn, formal_id))
+    return max(0, slots - active_count(conn, formal_id)
+               - pending_holds(conn, formal_id, priority))
 
 
 # ------------------------------------------------------------------ ballot
@@ -91,8 +128,8 @@ def build_ballot_inputs(conn, term):
     for f in formals:
         holds = conn.execute(
             "SELECT COUNT(*) AS n FROM released_slots "
-            "WHERE formal_id=? AND claimed_by IS NULL AND release_at > ?",
-            (f["id"], now)).fetchone()["n"]
+            "WHERE formal_id=? AND claimed_by IS NULL AND "
+            "COALESCE(general_at, release_at) > ?", (f["id"], now)).fetchone()["n"]
         taken = conn.execute(
             "SELECT COUNT(*) AS n FROM allocations WHERE formal_id=? AND status='active'",
             (f["id"],)).fetchone()["n"]
@@ -536,16 +573,24 @@ def cancel_allocation(conn, user_id, allocation_id, rng=None, actor=None):
         if user_id is not None and hours_until_formal(alloc["dt"]) < cutoff:
             raise CancelError(f"Cancellations close {int(cutoff)} hours "
                               "before the formal.")
+        # Random 0-60 min delay, then clamp both the priority open and the
+        # general open (+2h head start) into the 09:00–19:00 window so nobody is
+        # emailed at night — pushing to the next morning if need be.
         delay_s = rng.randint(0, 3600)
-        release_at = (datetime.now(timezone.utc) + timedelta(seconds=delay_s)
-                      ).strftime("%Y-%m-%d %H:%M:%S")
+        base_local = local_now() + timedelta(seconds=delay_s)
+        rel_local = daytime_clamp(base_local)
+        gen_local = daytime_clamp(rel_local + timedelta(hours=PRIORITY_ADVANTAGE_HOURS))
+        release_at = _local_to_utc_str(rel_local)
+        general_at = _local_to_utc_str(gen_local)
         conn.execute("UPDATE allocations SET status='cancelled', cancelled_at=? WHERE id=?",
                      (utcnow_str(), allocation_id))
         conn.execute(
-            "INSERT INTO released_slots(formal_id, allocation_id, release_at) VALUES (?,?,?)",
-            (alloc["formal_id"], allocation_id, release_at))
+            "INSERT INTO released_slots(formal_id, allocation_id, release_at, general_at) "
+            "VALUES (?,?,?,?)",
+            (alloc["formal_id"], allocation_id, release_at, general_at))
         audit(conn, actor or f"user:{alloc['user_id']}", "cancel",
-              f"allocation={allocation_id} formal={alloc['formal_id']} release_at={release_at}Z")
+              f"allocation={allocation_id} formal={alloc['formal_id']} "
+              f"release_at={release_at}Z general_at={general_at}Z")
         return release_at
 
 
@@ -570,16 +615,23 @@ def claim_seat(conn, user_id, formal_id, actor=None):
             (user_id, formal_id)).fetchone()
         if already:
             raise ClaimError("You already have a place at this formal.")
-        if free_seats(conn, formal_id, f["slots"]) < 1:
+        # Members who missed all allocations get a head start on released seats:
+        # during the priority window a released seat is claimable only by them.
+        priority = user_missed_all(conn, user_id, f["term"])
+        if free_seats(conn, formal_id, f["slots"], priority=priority) < 1:
+            if not priority and free_seats(conn, formal_id, f["slots"], priority=True) >= 1:
+                raise ClaimError("This place is in its priority window for members "
+                                 "who missed out — it opens to everyone shortly.")
             raise ClaimError("Sorry — no free places (someone may have beaten you to it).")
         conn.execute(
             "INSERT INTO allocations(user_id, formal_id, status, source) "
             "VALUES (?,?,'active','claim')", (user_id, formal_id))
-        # Mark one opened released slot as consumed, if one exists (a seat
-        # may also be free simply because the ballot didn't fill it).
+        # Consume one released seat now available to this claimer, if any (a
+        # seat may also be free simply because the ballot didn't fill it).
+        avail = "release_at" if priority else "COALESCE(general_at, release_at)"
         row = conn.execute(
-            "SELECT id FROM released_slots WHERE formal_id=? AND claimed_by IS NULL "
-            "AND release_at <= ? ORDER BY release_at LIMIT 1",
+            f"SELECT id FROM released_slots WHERE formal_id=? AND claimed_by IS NULL "  # noqa: S608
+            f"AND {avail} <= ? ORDER BY release_at LIMIT 1",
             (formal_id, utcnow_str())).fetchone()
         if row:
             conn.execute("UPDATE released_slots SET claimed_by=?, claimed_at=? WHERE id=?",
@@ -693,31 +745,64 @@ def send_scheduled_emails(conn, send_reminder, send_review, send_catering=None,
 
 # ------------------------------------------------------------------ release worker step
 
+def _formal_subscriber_emails(conn, formal_id, term, missed_only):
+    """Verified subscribers of a formal who don't already hold a place there.
+    missed_only=True → only those who missed every allocation this term (the
+    priority group); False → only those who DO hold a place elsewhere (the
+    general group, notified after the head start)."""
+    rows = conn.execute(
+        "SELECT u.id, u.email FROM subscriptions s JOIN users u ON u.id = s.user_id "
+        "WHERE s.formal_id=? AND u.email_verified=1 AND u.id NOT IN "
+        "(SELECT user_id FROM allocations WHERE formal_id=? AND status='active')",
+        (formal_id, formal_id)).fetchall()
+    out = []
+    for r in rows:
+        if user_missed_all(conn, r["id"], term) == missed_only:
+            out.append(r["email"])
+    return out
+
+
 def open_due_releases(conn, notify):
-    """Called periodically. For each released slot whose release_at has
-    passed and which hasn't triggered notifications yet, email subscribers.
-    `notify(formal_row, [emails])` does the sending. Returns #slots opened."""
+    """Called periodically. Two-phase release: at release_at, notify the
+    priority group (members who missed all allocations); at general_at (+2h),
+    notify everyone else. `notify(formal_row, [emails])` sends. Returns the
+    number of notifications fired."""
     now = utcnow_str()
-    due = conn.execute(
-        "SELECT r.id, r.formal_id FROM released_slots r "
-        "JOIN formals f ON f.id = r.formal_id "
-        "WHERE r.release_at <= ? AND r.notified = 0 AND r.claimed_by IS NULL",
-        (now,)).fetchall()
-    opened = 0
-    for r in due:
+    fired = 0
+    # Phase 1 — priority group.
+    for r in conn.execute(
+            "SELECT id, formal_id FROM released_slots "
+            "WHERE release_at <= ? AND notified = 0 AND claimed_by IS NULL",
+            (now,)).fetchall():
         with immediate(conn):
-            fresh = conn.execute(
-                "SELECT notified FROM released_slots WHERE id=?", (r["id"],)).fetchone()
+            fresh = conn.execute("SELECT notified FROM released_slots WHERE id=?",
+                                 (r["id"],)).fetchone()
             if fresh["notified"]:
                 continue
             conn.execute("UPDATE released_slots SET notified=1, opened=1 WHERE id=?",
                          (r["id"],))
-        formal = conn.execute("SELECT * FROM formals WHERE id=?", (r["formal_id"],)).fetchone()
-        subs = conn.execute(
-            "SELECT u.email FROM subscriptions s JOIN users u ON u.id = s.user_id "
-            "WHERE s.formal_id=? AND u.email_verified=1 AND u.id NOT IN "
-            "(SELECT user_id FROM allocations WHERE formal_id=? AND status='active')",
-            (r["formal_id"], r["formal_id"])).fetchall()
-        notify(formal, [s["email"] for s in subs])
-        opened += 1
-    return opened
+        formal = conn.execute("SELECT * FROM formals WHERE id=?",
+                              (r["formal_id"],)).fetchone()
+        emails = _formal_subscriber_emails(conn, r["formal_id"], formal["term"], True)
+        if emails:
+            notify(formal, emails)
+        fired += 1
+    # Phase 2 — everyone else, once the head-start window has passed.
+    for r in conn.execute(
+            "SELECT id, formal_id FROM released_slots "
+            "WHERE COALESCE(general_at, release_at) <= ? AND general_notified = 0 "
+            "AND claimed_by IS NULL", (now,)).fetchall():
+        with immediate(conn):
+            fresh = conn.execute("SELECT general_notified FROM released_slots WHERE id=?",
+                                 (r["id"],)).fetchone()
+            if fresh["general_notified"]:
+                continue
+            conn.execute("UPDATE released_slots SET general_notified=1 WHERE id=?",
+                         (r["id"],))
+        formal = conn.execute("SELECT * FROM formals WHERE id=?",
+                              (r["formal_id"],)).fetchone()
+        emails = _formal_subscriber_emails(conn, r["formal_id"], formal["term"], False)
+        if emails:
+            notify(formal, emails)
+        fired += 1
+    return fired

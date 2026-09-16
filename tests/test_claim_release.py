@@ -83,33 +83,51 @@ def test_cutoffs_within_24h(db):
     cancel_allocation(db, 1, alloc["id"])  # fine again >24h out
 
 
-def test_cancelled_seat_held_until_release_then_claimable(db):
-    add_user(db, 1); add_user(db, 2)
+def test_priority_window_two_phase(db):
+    add_user(db, 1); add_user(db, 2); add_user(db, 3)
     add_formal(db, 1, slots=1)
-    claim_seat(db, 1, 1)
-    rng = random.Random(7)
+    add_formal(db, 2, slots=1)
+    claim_seat(db, 1, 1)            # user1 holds the only seat at formal 1
+    claim_seat(db, 3, 2)            # user3 already has a place (formal 2) -> general
     cancel_allocation(db, 1, db.execute(
-        "SELECT id FROM allocations WHERE user_id=1").fetchone()["id"], rng=rng)
-    row = db.execute("SELECT release_at FROM released_slots").fetchone()
-    delay = (datetime.fromisoformat(row["release_at"]).replace(tzinfo=timezone.utc)
-             - datetime.now(timezone.utc)).total_seconds()
-    assert -5 <= delay <= 3600, "release must be within 0-60 minutes"
+        "SELECT id FROM allocations WHERE user_id=1 AND formal_id=1").fetchone()["id"])
+    # Force the priority window open now, general phase still in the future.
+    db.execute("UPDATE released_slots SET release_at=?, general_at=?",
+               (utc(-60), utc(3600)))
+    # user2 missed everything -> priority audience sees it free and may claim;
+    # the general audience (user3) does not yet.
+    assert free_seats(db, 1, priority=True) == 1
+    assert free_seats(db, 1) == 0
+    with pytest.raises(ClaimError):
+        claim_seat(db, 3, 1)       # general user blocked during the head start
 
-    if delay > 1:  # seat still held: nobody can grab it yet
-        assert free_seats(db, 1) == 0
-        with pytest.raises(ClaimError):
-            claim_seat(db, 2, 1)
-
-    # Time passes: force the hold to expire.
-    db.execute("UPDATE released_slots SET release_at=?", (utc(-60),))
-    assert free_seats(db, 1) == 1
-    notified = []
+    # Notifications: priority phase emails only the missed-all subscribers.
     db.execute("INSERT INTO subscriptions(user_id, formal_id) VALUES (2, 1)")
-    opened = open_due_releases(db, lambda f, emails: notified.append(emails))
-    assert opened == 1
-    assert notified == [["u2@pem.cam.ac.uk"]]
-    assert open_due_releases(db, lambda f, e: notified.append(e)) == 0  # once only
-    claim_seat(db, 2, 1)
+    db.execute("INSERT INTO subscriptions(user_id, formal_id) VALUES (3, 1)")
+    notified = []
+    assert open_due_releases(db, lambda f, e: notified.append(e)) == 1
+    assert notified == [["u2@pem.cam.ac.uk"]]  # user3 (has a place) waits
+
+    claim_seat(db, 2, 1)           # priority user claims within the window
+    assert free_seats(db, 1) == 0
+
+
+def test_general_phase_after_head_start(db):
+    add_user(db, 1); add_user(db, 3)
+    add_formal(db, 1, slots=1); add_formal(db, 2, slots=1)
+    claim_seat(db, 1, 1)
+    claim_seat(db, 3, 2)           # user3 holds a place -> general audience
+    cancel_allocation(db, 1, db.execute(
+        "SELECT id FROM allocations WHERE user_id=1 AND formal_id=1").fetchone()["id"])
+    # Both phases now in the past.
+    db.execute("UPDATE released_slots SET release_at=?, general_at=?",
+               (utc(-7200), utc(-60)))
+    assert free_seats(db, 1) == 1  # general audience can now take it
+    db.execute("INSERT INTO subscriptions(user_id, formal_id) VALUES (3, 1)")
+    notified = []
+    open_due_releases(db, lambda f, e: notified.extend(e))
+    assert "u3@pem.cam.ac.uk" in notified
+    claim_seat(db, 3, 1)           # general user claims after the head start
     assert free_seats(db, 1) == 0
 
 

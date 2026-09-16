@@ -6,6 +6,8 @@
   {% if formal['price'] %}&middot; {{ formal['price'] }}{% endif %}</p>
   <p>Free places right now: <b>{{ free }}</b></p>
   {% if free > 0 %}
+  {% if priority %}<p class="muted">You missed out in the ballot, so you get a
+  2-hour head start on released places before they open to everyone.</p>{% endif %}
   <form method="post">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <button>Claim this place</button>

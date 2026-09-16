@@ -60,9 +60,11 @@ CREATE TABLE IF NOT EXISTS released_slots (
     id INTEGER PRIMARY KEY,
     formal_id INTEGER NOT NULL REFERENCES formals(id),
     allocation_id INTEGER REFERENCES allocations(id),
-    release_at TEXT NOT NULL,        -- UTC ISO; slot is hidden until then
+    release_at TEXT NOT NULL,        -- UTC; priority claimers can take it from here
+    general_at TEXT,                 -- UTC; everyone else can take it from here (+2h)
     opened INTEGER NOT NULL DEFAULT 0,
-    notified INTEGER NOT NULL DEFAULT 0,
+    notified INTEGER NOT NULL DEFAULT 0,        -- priority subscribers notified
+    general_notified INTEGER NOT NULL DEFAULT 0, -- everyone else notified
     claimed_by INTEGER REFERENCES users(id),
     claimed_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))

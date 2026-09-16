@@ -123,6 +123,19 @@ TEMPLATES = {
                 "star per good course, two for the vibes — and leave a review or "
                 "photo if you like.</p>",
     },
+    "catering": {
+        "label": "Attendance list to host college (1 week before)",
+        "placeholders": ["greeting", "host_college", "dt", "count", "table",
+                         "summary", "signoff"],
+        "subject": "Pembroke attendees — {host_college} formal, {dt}",
+        "body": "<p>{greeting}</p>"
+                "<p>Please find below the <b>{count}</b> Pembroke College member(s) "
+                "attending your formal on <b>{dt}</b>, with dietary requirements "
+                "for catering.</p>{table}"
+                "<p><b>Dietary summary:</b> {summary}.</p>"
+                "<p>Please let us know if you need anything further. Thank you!</p>"
+                "<p>{signoff}</p>",
+    },
     "no_place": {
         "label": "No place this time (ballot miss)",
         "placeholders": ["term", "site"],
@@ -282,21 +295,15 @@ def catering_email(to, cc, formal, rows, admin_name=""):
         if r["dietary_other"]:
             tally[r["dietary_other"]] = tally.get(r["dietary_other"], 0) + 1
     summary = ", ".join(f"{d} ×{n}" for d, n in sorted(tally.items())) or "none noted"
-    return send(
-        to,
-        f"Pembroke attendees — {formal['host_college']} formal, {formal['dt']}",
-        f"<p>{greeting}</p>"
-        f"<p>Please find below the <b>{len(rows)}</b> Pembroke College member(s) "
-        f"attending your formal on <b>{formal['dt']}</b>, with dietary "
-        f"requirements for catering.</p>"
-        f"<table style='border-collapse:collapse'>"
-        f"<tr><th style='border:1px solid #ccc;padding:4px 8px;text-align:left'>Name</th>"
-        f"<th style='border:1px solid #ccc;padding:4px 8px;text-align:left'>Dietary requirements</th></tr>"
-        f"{body}</table>"
-        f"<p><b>Dietary summary:</b> {summary}.</p>"
-        f"<p>Please let us know if you need anything further. Thank you!</p>"
-        f"<p>{signoff}</p>",
-        cc=cc)
+    table = ("<table style='border-collapse:collapse'>"
+             "<tr><th style='border:1px solid #ccc;padding:4px 8px;text-align:left'>Name</th>"
+             "<th style='border:1px solid #ccc;padding:4px 8px;text-align:left'>"
+             "Dietary requirements</th></tr>" + body + "</table>")
+    subject, html = _render_template("catering", {
+        "greeting": greeting, "host_college": formal["host_college"],
+        "dt": formal["dt"], "count": len(rows), "table": table,
+        "summary": summary, "signoff": signoff})
+    return send(to, subject, html, cc=cc)
 
 
 def review_request_email(to, formal, link):

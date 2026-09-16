@@ -629,8 +629,10 @@ def claim(formal_id):
             return redirect(url_for("main.me"))
         except ClaimError as e:
             flash(str(e), "error")
-    return render_template("claim.html", formal=f,
-                           free=free_seats(db, formal_id, f["slots"]))
+    from ..services import user_missed_all
+    priority = user_missed_all(db, current_user()["id"], f["term"])
+    return render_template("claim.html", formal=f, priority=priority,
+                           free=free_seats(db, formal_id, f["slots"], priority=priority))
 
 
 @bp.route("/review/<int:formal_id>", methods=["GET", "POST"])
