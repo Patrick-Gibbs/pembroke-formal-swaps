@@ -5,6 +5,9 @@ other colleges that visit you. Built for Pembroke College, Cambridge
 (live at https://pembrokeformalswaps.com) but designed so any college MCR/JCR
 can deploy their own copy on a cheap VM.
 
+Installable as a PWA; de-indexed from search engines; members can export or
+delete their data (GDPR) from My formals.
+
 **Stack:** Python 3 (3.12+; runs on 3.14) · Flask · SQLite (stdlib, WAL mode)
 · argon2id password hashing · waitress WSGI server · Caddy (automatic HTTPS)
 · [Resend](https://resend.com) for all outbound email. No Postgres, no Redis,
@@ -123,6 +126,24 @@ a PIN), its own rate-limit bucket, and a full audit log.
 - **Users list**, **subscriptions & releases view**, **audit log** (all admin
   actions + cancels/claims), and an **email log** (`/admin/emails`) recording
   every send attempt with success/failure and a 7-day failure summary.
+- **Analytics** (`/admin/analytics`): per-college demand-vs-capacity, fill
+  rates, oversubscription ratios, and an equity report of members who entered
+  but got nothing (per term).
+- **Terms** (`/admin/terms`): browse every term with counts, and one-click
+  start/switch the current term (rollover).
+- **Formals admin**: create, edit, **duplicate**, delete, and **bulk CSV
+  import** (`/admin/formals/import`).
+- **Editable email templates** (`/admin/email-templates`): customise the
+  subject/body of the slot-open, day-of reminder, review-request, and
+  no-place emails (placeholder tokens; blank = built-in default).
+- **Catering emails**: the attendance list + dietary auto-goes to each host
+  college a week before (cc the admin email), addressed to the host contact
+  "and team" when several are listed; plus a manual "email host now" button.
+- **Admin attendance**: optionally reserve yourself a seat in every formal
+  before the ballot (−1 place each).
+- **One-click DB backup download** (`/admin/backup.db`, consistent copy).
+- **Incoming swaps** admin (`/admin/incoming`): manually track visiting
+  colleges, host contacts, and editable guest lists; public view at `/incoming`.
 
 ### Automated background behaviour (no cron needed beyond backups)
 
