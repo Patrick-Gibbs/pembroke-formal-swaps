@@ -43,6 +43,18 @@
 <p class="muted">Cancelling releases your place to others at a random moment within
 the next hour. No cancellations in the {{ cutoff_h }} hours before a formal.</p>
 {% endif %}
+<h2>Add to your calendar</h2>
+<div class="card">
+  <p>Subscribe once and every formal you're allocated appears in your calendar
+  automatically (and updates if things change):</p>
+  <p><input type="text" readonly value="{{ cal_url }}" id="cal-url"
+     style="width:100%;max-width:34rem;padding:.4rem;border:1px solid #b8c4d0;border-radius:6px">
+     <button type="button" class="small" onclick="navigator.clipboard.writeText(document.getElementById('cal-url').value); this.textContent='✓ Copied'">Copy</button></p>
+  <p class="muted">In Google/Apple/Outlook Calendar choose “subscribe from URL”
+  and paste this. Keep it private — anyone with this link can see your formals
+  (you can reset it by deleting &amp; re-creating your account).</p>
+</div>
+
 <h2>Slot alerts</h2>
 {% if subs %}
 <table>
@@ -69,18 +81,6 @@ the next hour. No cancellations in the {{ cutoff_h }} hours before a formal.</p>
 </div>
 {% endfor %}
 {% else %}<p class="muted">You haven't written any reviews yet — you can review a formal after you've attended it.</p>{% endif %}
-
-<h2>Add to your calendar</h2>
-<div class="card">
-  <p>Subscribe once and every formal you're allocated appears in your calendar
-  automatically (and updates if things change):</p>
-  <p><input type="text" readonly value="{{ cal_url }}" id="cal-url"
-     style="width:100%;max-width:34rem;padding:.4rem;border:1px solid #b8c4d0;border-radius:6px">
-     <button type="button" class="small" onclick="navigator.clipboard.writeText(document.getElementById('cal-url').value); this.textContent='✓ Copied'">Copy</button></p>
-  <p class="muted">In Google/Apple/Outlook Calendar choose “subscribe from URL”
-  and paste this. Keep it private — anyone with this link can see your formals
-  (you can reset it by deleting &amp; re-creating your account).</p>
-</div>
 
 <h2>Your data &amp; privacy</h2>
 <div class="card">
