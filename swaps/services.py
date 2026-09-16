@@ -62,7 +62,14 @@ def swap_cutoff_hours(conn):
         return config.SWAP_CUTOFF_HOURS
 
 
-PRIORITY_ADVANTAGE_HOURS = 2   # head start for members who missed all allocations
+# Released-seat timing is randomised so a leaver can't tip off a friend about
+# exactly when the seat will reopen: the priority open lands at a random moment
+# within PRIORITY_OPEN_MAX_HOURS of the cancellation, and the general open a
+# further random GENERAL_GAP_MIN..MAX hours after that (always ≥ the minimum
+# head start for members who missed out). All times are clamped to daytime.
+PRIORITY_OPEN_MAX_HOURS = 2    # priority open at random in [0, 2h] after cancel
+GENERAL_GAP_MIN_HOURS = 2      # then everyone else, at least this much later …
+GENERAL_GAP_MAX_HOURS = 5      # … and at most this much later
 RELEASE_DAY_START = 9          # only open/notify released slots 09:00–19:00 local
 RELEASE_DAY_END = 19
 
@@ -573,13 +580,15 @@ def cancel_allocation(conn, user_id, allocation_id, rng=None, actor=None):
         if user_id is not None and hours_until_formal(alloc["dt"]) < cutoff:
             raise CancelError(f"Cancellations close {int(cutoff)} hours "
                               "before the formal.")
-        # Random 0-60 min delay, then clamp both the priority open and the
-        # general open (+2h head start) into the 09:00–19:00 window so nobody is
-        # emailed at night — pushing to the next morning if need be.
-        delay_s = rng.randint(0, 3600)
-        base_local = local_now() + timedelta(seconds=delay_s)
-        rel_local = daytime_clamp(base_local)
-        gen_local = daytime_clamp(rel_local + timedelta(hours=PRIORITY_ADVANTAGE_HOURS))
+        # Two randomised, unpredictable stages (see the constants above), both
+        # clamped to the 09:00–19:00 window so nobody is emailed at night —
+        # rolling over to the next morning if need be. The random gap between
+        # the two stages guarantees the missed-out group a genuine head start
+        # and stops a leaver from timing the reopen for a friend.
+        pri_delay = rng.randint(0, PRIORITY_OPEN_MAX_HOURS * 3600)
+        gap = rng.randint(GENERAL_GAP_MIN_HOURS * 3600, GENERAL_GAP_MAX_HOURS * 3600)
+        rel_local = daytime_clamp(local_now() + timedelta(seconds=pri_delay))
+        gen_local = daytime_clamp(rel_local + timedelta(seconds=gap))
         release_at = _local_to_utc_str(rel_local)
         general_at = _local_to_utc_str(gen_local)
         conn.execute("UPDATE allocations SET status='cancelled', cancelled_at=? WHERE id=?",

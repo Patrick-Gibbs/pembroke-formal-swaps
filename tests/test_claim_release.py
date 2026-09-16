@@ -143,3 +143,21 @@ def test_subscriber_already_attending_not_notified(db):
     notified = []
     open_due_releases(db, lambda f, emails: notified.extend(emails))
     assert notified == []  # user 2 already has an active place
+
+
+def test_release_timing_head_start_invariant(db):
+    import random as _random
+    from datetime import datetime as _dt
+    add_user(db, 1)
+    add_formal(db, 1, slots=1)
+    claim_seat(db, 1, 1)
+    aid = db.execute("SELECT id FROM allocations WHERE user_id=1").fetchone()["id"]
+    # Many seeds: general open must always be >= 2h after the priority open.
+    for seed in range(30):
+        db.execute("DELETE FROM released_slots")
+        db.execute("UPDATE allocations SET status='active' WHERE id=?", (aid,))
+        cancel_allocation(db, 1, aid, rng=_random.Random(seed))
+        r = db.execute("SELECT release_at, general_at FROM released_slots").fetchone()
+        rel = _dt.fromisoformat(r["release_at"])
+        gen = _dt.fromisoformat(r["general_at"])
+        assert (gen - rel).total_seconds() >= 2 * 3600, seed
