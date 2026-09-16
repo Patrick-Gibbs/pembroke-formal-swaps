@@ -34,6 +34,12 @@ def create_app():
     app.before_request(check_csrf)
     app.teardown_appcontext(close_db)
 
+    @app.after_request
+    def _no_index(resp):
+        # Keep the whole site out of search indexes (it's a private members' tool).
+        resp.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+        return resp
+
     @app.context_processor
     def inject():
         return {

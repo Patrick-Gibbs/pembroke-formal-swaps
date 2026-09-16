@@ -336,6 +336,12 @@ def profile():
         favourite=fav[0][0] if fav else None)
 
 
+@bp.route("/robots.txt")
+def robots():
+    from flask import Response
+    return Response("User-agent: *\nDisallow: /\n", mimetype="text/plain")
+
+
 @bp.route("/privacy")
 def privacy():
     return render_template("privacy.html")
