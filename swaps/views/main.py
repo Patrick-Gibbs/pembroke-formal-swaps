@@ -90,12 +90,16 @@ def index():
         attending = {r["formal_id"] for r in db.execute(
             "SELECT formal_id FROM allocations WHERE user_id=? AND status='active'",
             (user["id"],)).fetchall()}
+    from ..services import admin_reserved_counts
+    reserved = admin_reserved_counts(db, term) if term else {}
     return render_template("index.html", formals=formals, term=term,
                            attending=attending,
                            ballot_open=_ballot_window(db, term) if term else False,
                            ballot_closes=t_close, ballot_opens=t_open,
                            opens_soon=opens_soon,
                            cutoff_h=int(cancel_cutoff_hours(db)),
+                           member_slots={f["id"]: f["slots"] - reserved.get(f["id"], 0)
+                                         for f in formals},
                            free_seats={f["id"]: free_seats(db, f["id"], f["slots"])
                                        for f in formals})
 

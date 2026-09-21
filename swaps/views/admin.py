@@ -9,7 +9,7 @@ from ..db import get_db, get_setting, set_setting, audit
 from ..security import (admin_required, client_ip, ip_blocked,
                         lockout_remaining, record_attempt, verify_secret)
 from ..services import (CancelError, ClaimError, cancel_allocation, claim_seat,
-                        free_seats, run_allocation)
+                        free_seats, run_allocation, seat_admin, unseat_admin)
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -113,11 +113,25 @@ def settings():
     set_setting(db, "swap_cutoff_hours", str(swap_cut))
     set_setting(db, "admin_email", request.form.get("admin_email", "").strip()[:200])
     set_setting(db, "admin_name", request.form.get("admin_name", "").strip()[:120])
-    set_setting(db, "admin_auto_attend",
-                "1" if request.form.get("admin_auto_attend") else "0")
+    auto = "1" if request.form.get("admin_auto_attend") else "0"
+    set_setting(db, "admin_auto_attend", auto)
     audit(db, "admin", "settings", f"term={term} window={t_open}..{t_close} "
           f"public={request.form.get('attendee_list_public', '0')}")
     flash("Settings saved.", "ok")
+    # Reflect auto-attend immediately so ranking shows N−1 (or restore N).
+    cur_term = get_setting(db, "current_term")
+    if auto == "1":
+        n = seat_admin(db, cur_term)
+        if n < 0:
+            flash("Auto-attend is on, but no verified member is registered with "
+                  "the admin email yet — register it, then re-save to reserve "
+                  "your seats.", "error")
+        elif n:
+            flash(f"Reserved your seat in {n} formal(s) this term.", "ok")
+    else:
+        removed = unseat_admin(db, cur_term)
+        if removed:
+            flash(f"Released {removed} reserved admin seat(s).", "ok")
     return redirect(url_for("admin.dashboard"))
 
 
@@ -311,6 +325,7 @@ def formal_new():
                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", vals)
             _remember_endowment(db, vals[0], vals[13])
             audit(db, "admin", "formal_create", f"{vals[0]} {vals[1]}")
+            seat_admin(db, vals[4])  # reserve the admin's seat if auto-attend on
             flash("Formal created.", "ok")
             return redirect(url_for("admin.dashboard"))
     return render_template("admin/formal_form.html", f=None,
@@ -373,6 +388,7 @@ def formal_duplicate(fid):
         "ballot_open, ballot_close, 'open', location, instructions, host_name, "
         "host_email, host_phone, endowment_m FROM formals WHERE id=?", (fid,))
     audit(db, "admin", "formal_duplicate", f"from={fid}")
+    seat_admin(db, f["term"])
     flash(f"Duplicated {f['host_college']} — edit the copy's date as needed.", "ok")
     return redirect(url_for("admin.dashboard"))
 
@@ -415,37 +431,13 @@ def formals_import():
             created += 1
         if created:
             audit(db, "admin", "formals_import", f"created={created}")
+            seat_admin(db, get_setting(db, "current_term"))
             flash(f"Imported {created} formal(s).", "ok")
         for e in errors[:10]:
             flash(e, "error")
         if created and not errors:
             return redirect(url_for("admin.dashboard"))
     return render_template("admin/formals_import.html")
-
-
-def _seat_admin(db, term):
-    """If auto-attend is on, seat the admin's member account in every formal of
-    the term before the ballot (source='admin'), which reduces each formal's
-    ballot capacity by one. Returns: None (disabled), -1 (no matching member),
-    or the number of new seats reserved."""
-    if get_setting(db, "admin_auto_attend", "0") != "1":
-        return None
-    email = get_setting(db, "admin_email", "").strip().lower()
-    u = db.execute("SELECT id FROM users WHERE email=? AND email_verified=1",
-                   (email,)).fetchone() if email else None
-    if u is None:
-        return -1
-    seated = 0
-    for f in db.execute("SELECT id FROM formals WHERE term=? AND "
-                        "status IN ('open','allocated')", (term,)).fetchall():
-        if not db.execute("SELECT 1 FROM allocations WHERE user_id=? AND formal_id=? "
-                          "AND status='active'", (u["id"], f["id"])).fetchone():
-            db.execute("INSERT INTO allocations(user_id, formal_id, status, source) "
-                       "VALUES (?,?,'active','admin')", (u["id"], f["id"]))
-            seated += 1
-    if seated:
-        audit(db, "admin", "admin_auto_attend", f"term={term} seated={seated}")
-    return seated
 
 
 @bp.route("/allocate", methods=["GET", "POST"])
@@ -456,14 +448,14 @@ def allocate():
     if request.method == "POST":
         term = request.form.get("term", term).strip()
         seed = request.form.get("seed", "").strip() or None
-        seated = _seat_admin(db, term)  # reserve the admin's seat first (−1 place each)
+        seated = seat_admin(db, term)  # ensure the admin holds every formal (−1 each)
         run_id, used_seed, placed, log, new_allocs = run_allocation(db, term, seed)
-        if seated is not None and seated < 0:
+        if seated < 0:
             flash("Auto-attend is on but no verified member matches the admin "
-                  "email — no seats reserved. Set a registered admin email in "
-                  "Settings, or turn auto-attend off.", "error")
+                  "email — no seats reserved. Register the admin email as a "
+                  "member, or turn auto-attend off in Settings.", "error")
         elif seated:
-            flash(f"Reserved your seat in {seated} formal(s) before the draw.", "ok")
+            flash(f"Reserved your seat in {seated} more formal(s) before the draw.", "ok")
         # First generate of the term? Hold results as a draft until Publish.
         already_public = db.execute(
             "SELECT 1 FROM allocations a JOIN formals f ON f.id=a.formal_id "

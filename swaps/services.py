@@ -120,6 +120,66 @@ def free_seats(conn, formal_id, slots=None, priority=False):
                - pending_holds(conn, formal_id, priority))
 
 
+# ------------------------------------------------------------ admin auto-attend
+
+def admin_attend_user(conn):
+    """User id of the member the organiser auto-attends as (the verified member
+    registered with the admin email) when auto-attend is on, else None."""
+    if get_setting(conn, "admin_auto_attend", "0") != "1":
+        return None
+    email = get_setting(conn, "admin_email", "").strip().lower()
+    if not email:
+        return None
+    u = conn.execute("SELECT id FROM users WHERE email=? AND email_verified=1",
+                     (email,)).fetchone()
+    return u["id"] if u else None
+
+
+def seat_admin(conn, term):
+    """Reserve the auto-attend admin a seat (source='admin') in every
+    open/allocated formal of the term. Idempotent. Returns the number of new
+    seats reserved, or -1 if auto-attend is on but no verified member matches
+    the admin email, or 0 if auto-attend is off."""
+    if get_setting(conn, "admin_auto_attend", "0") != "1":
+        return 0
+    uid = admin_attend_user(conn)
+    if uid is None:
+        return -1
+    seated = 0
+    for f in conn.execute("SELECT id FROM formals WHERE term=? AND "
+                          "status IN ('open','allocated')", (term,)).fetchall():
+        if not conn.execute("SELECT 1 FROM allocations WHERE user_id=? AND formal_id=? "
+                            "AND status='active'", (uid, f["id"])).fetchone():
+            conn.execute("INSERT INTO allocations(user_id, formal_id, status, source) "
+                         "VALUES (?,?,'active','admin')", (uid, f["id"]))
+            seated += 1
+    if seated:
+        audit(conn, "admin", "admin_auto_attend", f"term={term} seated={seated}")
+    return seated
+
+
+def unseat_admin(conn, term):
+    """Remove the reserved admin seats for a term (used when auto-attend is
+    turned off). Only touches source='admin' active allocations."""
+    email = get_setting(conn, "admin_email", "").strip().lower()
+    u = conn.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
+    if u is None:
+        return 0
+    cur = conn.execute(
+        "DELETE FROM allocations WHERE user_id=? AND source='admin' AND status='active' "
+        "AND formal_id IN (SELECT id FROM formals WHERE term=?)", (u["id"], term))
+    return cur.rowcount
+
+
+def admin_reserved_counts(conn, term):
+    """{formal_id: 1} for formals in the term with a reserved admin seat, so the
+    UI can show N−1 member places while ranking."""
+    return {r["formal_id"]: r["n"] for r in conn.execute(
+        "SELECT a.formal_id, COUNT(*) n FROM allocations a JOIN formals f ON f.id=a.formal_id "
+        "WHERE f.term=? AND a.status='active' AND a.source='admin' GROUP BY a.formal_id",
+        (term,)).fetchall()}
+
+
 # ------------------------------------------------------------------ ballot
 
 def build_ballot_inputs(conn, term):

@@ -72,7 +72,9 @@
     <input type="text" name="admin_name" value="{{ admin_name }}" placeholder="e.g. Patrick Gibbs">
     <label style="font-weight:normal"><input type="checkbox" name="admin_auto_attend"
       {% if admin_auto_attend %}checked{% endif %}> Auto-attend: reserve me a seat in every
-      formal before the ballot runs (the member registered with the admin email above; −1 place each)</label>
+      formal (the member registered with the admin email above). Takes effect
+      immediately — members see N−1 places while ranking, and I'm placed in every
+      formal when the ballot runs.</label>
     <p><button>Save settings</button></p>
   </form>
 </div>
