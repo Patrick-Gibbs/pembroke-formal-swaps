@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS formals (
     status TEXT NOT NULL DEFAULT 'open',  -- open | allocated | cancelled
     location TEXT NOT NULL DEFAULT '',      -- meeting point / address for calendar
     instructions TEXT NOT NULL DEFAULT '',  -- dress code, payment, arrival time...
+    description TEXT NOT NULL DEFAULT '',    -- public blurb shown when ranking (courses, etc.)
     host_name TEXT NOT NULL DEFAULT '',     -- host college contact (admin-only)
     host_email TEXT NOT NULL DEFAULT '',
     host_phone TEXT NOT NULL DEFAULT '',

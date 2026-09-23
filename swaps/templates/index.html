@@ -63,7 +63,8 @@
     <tr><th>College</th><th>Date &amp; time</th><th>Price</th><th>Places</th><th>Free now</th><th></th></tr>
     {% for f in formals %}
     <tr>
-      <td>{{ f['host_college'] }}</td>
+      <td>{{ f['host_college'] }}
+        {% if f['description'] %}<br><span class="muted" style="font-size:.85rem">{{ f['description'] }}</span>{% endif %}</td>
       <td>{{ f['dt'] }}</td>
       <td>{{ f['price'] }}</td>
       <td>{{ member_slots[f['id']] }}</td>

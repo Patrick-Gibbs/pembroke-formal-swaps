@@ -68,7 +68,8 @@ you don't want. You can edit until the ballot closes{% if ballot_closes %}
   <ol class="ranklist" id="ranked">
     {% for f in ranked %}
     <li data-id="{{ f['id'] }}"><span class="num"></span>
-      <span class="grow"><b>{{ f['host_college'] }}</b> — {{ f['dt'] }} {% if f['price'] %}({{ f['price'] }}){% endif %}</span>
+      <span class="grow"><b>{{ f['host_college'] }}</b> — {{ f['dt'] }} {% if f['price'] %}({{ f['price'] }}){% endif %}
+        {% if f['description'] %}<br><span class="muted">{{ f['description'] }}</span>{% endif %}</span>
       <button type="button" class="small ghost" onclick="move(this,-1)">▲</button>
       <button type="button" class="small ghost" onclick="move(this,1)">▼</button>
       <button type="button" class="small danger" onclick="drop(this)">✕</button>
@@ -80,7 +81,8 @@ you don't want. You can edit until the ballot closes{% if ballot_closes %}
   <ul class="ranklist" id="unranked">
     {% for f in unranked %}
     <li data-id="{{ f['id'] }}">
-      <span class="grow"><b>{{ f['host_college'] }}</b> — {{ f['dt'] }} {% if f['price'] %}({{ f['price'] }}){% endif %}</span>
+      <span class="grow"><b>{{ f['host_college'] }}</b> — {{ f['dt'] }} {% if f['price'] %}({{ f['price'] }}){% endif %}
+        {% if f['description'] %}<br><span class="muted">{{ f['description'] }}</span>{% endif %}</span>
       <button type="button" class="small" onclick="add(this)">+ Add to ranking</button>
     </li>
     {% endfor %}

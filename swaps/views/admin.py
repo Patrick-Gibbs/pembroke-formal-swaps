@@ -284,7 +284,8 @@ def _formal_from_form():
             request.form.get("host_name", "").strip()[:120],
             request.form.get("host_email", "").strip()[:200],
             request.form.get("host_phone", "").strip()[:50],
-            _parse_endowment(request.form.get("endowment_m", "")))
+            _parse_endowment(request.form.get("endowment_m", "")),
+            request.form.get("description", "").strip()[:2000])
 
 
 def _parse_endowment(raw):
@@ -321,8 +322,8 @@ def formal_new():
         else:
             db.execute("INSERT INTO formals(host_college, dt, price, slots, term, "
                        "ballot_open, ballot_close, status, location, instructions, "
-                       "host_name, host_email, host_phone, endowment_m) "
-                       "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", vals)
+                       "host_name, host_email, host_phone, endowment_m, description) "
+                       "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", vals)
             _remember_endowment(db, vals[0], vals[13])
             audit(db, "admin", "formal_create", f"{vals[0]} {vals[1]}")
             seat_admin(db, vals[4])  # reserve the admin's seat if auto-attend on
@@ -346,7 +347,7 @@ def formal_edit(fid):
         db.execute("UPDATE formals SET host_college=?, dt=?, price=?, slots=?, term=?, "
                    "ballot_open=?, ballot_close=?, status=?, location=?, "
                    "instructions=?, host_name=?, host_email=?, host_phone=?, "
-                   "endowment_m=? WHERE id=?", vals + (fid,))
+                   "endowment_m=?, description=? WHERE id=?", vals + (fid,))
         _remember_endowment(db, vals[0], vals[13])
         audit(db, "admin", "formal_edit", f"id={fid} {vals[0]} {vals[1]}")
         flash("Saved.", "ok")
@@ -384,9 +385,10 @@ def formal_duplicate(fid):
     db.execute(
         "INSERT INTO formals(host_college, dt, price, slots, term, ballot_open, "
         "ballot_close, status, location, instructions, host_name, host_email, "
-        "host_phone, endowment_m) SELECT host_college, dt, price, slots, term, "
-        "ballot_open, ballot_close, 'open', location, instructions, host_name, "
-        "host_email, host_phone, endowment_m FROM formals WHERE id=?", (fid,))
+        "host_phone, endowment_m, description) SELECT host_college, dt, price, "
+        "slots, term, ballot_open, ballot_close, 'open', location, instructions, "
+        "host_name, host_email, host_phone, endowment_m, description "
+        "FROM formals WHERE id=?", (fid,))
     audit(db, "admin", "formal_duplicate", f"from={fid}")
     seat_admin(db, f["term"])
     flash(f"Duplicated {f['host_college']} — edit the copy's date as needed.", "ok")
@@ -419,15 +421,15 @@ def formals_import():
             db.execute(
                 "INSERT INTO formals(host_college, dt, price, slots, term, "
                 "ballot_open, ballot_close, status, location, instructions, "
-                "host_name, host_email, host_phone) "
-                "VALUES (?,?,?,?,?,?,?,'open',?,?,?,?,?)",
+                "host_name, host_email, host_phone, description) "
+                "VALUES (?,?,?,?,?,?,?,'open',?,?,?,?,?,?)",
                 (college, dt, r.get("price", ""), slots,
                  r.get("term") or get_setting(db, "current_term"),
                  (r.get("ballot_open") or "").replace("T", " "),
                  (r.get("ballot_close") or "").replace("T", " "),
                  r.get("location", ""), r.get("instructions", ""),
                  r.get("host_name", ""), r.get("host_email", ""),
-                 r.get("host_phone", "")))
+                 r.get("host_phone", ""), r.get("description", "")))
             created += 1
         if created:
             audit(db, "admin", "formals_import", f"created={created}")

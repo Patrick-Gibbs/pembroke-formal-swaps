@@ -30,6 +30,7 @@ def init_db(db_path=None):
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(formals)")}
     for col, ddl in [("location", "TEXT NOT NULL DEFAULT ''"),
                      ("instructions", "TEXT NOT NULL DEFAULT ''"),
+                     ("description", "TEXT NOT NULL DEFAULT ''"),
                      ("reminder_sent", "INTEGER NOT NULL DEFAULT 0"),
                      ("review_sent", "INTEGER NOT NULL DEFAULT 0"),
                      ("catering_sent", "INTEGER NOT NULL DEFAULT 0"),
