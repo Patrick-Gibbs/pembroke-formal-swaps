@@ -81,7 +81,6 @@ def dashboard():
                            term_ballot_close=get_setting(db, "term_ballot_close"),
                            cancel_cutoff=get_setting(db, "cancel_cutoff_hours", "12"),
                            cancel_charge=get_setting(db, "cancel_charge_hours", "72"),
-                           swap_cutoff=get_setting(db, "swap_cutoff_hours", "168"),
                            admin_email=get_setting(db, "admin_email", ""),
                            admin_name=get_setting(db, "admin_name", ""),
                            officer_name=get_setting(db, "officer_name", ""),
@@ -155,11 +154,6 @@ def settings():
     except ValueError:
         charge = 72
     set_setting(db, "cancel_charge_hours", str(charge))
-    try:
-        swap_cut = max(0, int(request.form.get("swap_cutoff_hours", "168")))
-    except ValueError:
-        swap_cut = 168
-    set_setting(db, "swap_cutoff_hours", str(swap_cut))
     set_setting(db, "admin_email", request.form.get("admin_email", "").strip()[:200])
     set_setting(db, "admin_name", request.form.get("admin_name", "").strip()[:120])
     set_setting(db, "officer_name", request.form.get("officer_name", "").strip()[:120])

@@ -62,16 +62,6 @@ def cancel_charge_hours(conn):
         return config.CANCEL_CHARGE_HOURS
 
 
-def swap_cutoff_hours(conn):
-    """Hours before a formal at which peer-to-peer swaps close. Admin-editable;
-    falls back to config.SWAP_CUTOFF_HOURS (a week)."""
-    try:
-        return float(get_setting(conn, "swap_cutoff_hours", "")
-                     or config.SWAP_CUTOFF_HOURS)
-    except ValueError:
-        return config.SWAP_CUTOFF_HOURS
-
-
 # Released-seat timing is randomised so a leaver can't tip off a friend about
 # exactly when the seat will reopen: the priority open lands at a random moment
 # within PRIORITY_OPEN_MAX_HOURS of the cancellation, and the general open a
@@ -554,17 +544,18 @@ def _swap_preconditions(conn, from_user, from_formal, to_user, to_formal):
         raise SwapError("You already have a place at that formal.")
     if _holds_active(conn, to_user, from_formal):
         raise SwapError("The other person already has a place at your formal.")
-    cutoff = swap_cutoff_hours(conn)
+    # Swaps stay open until the host has the final dietary list for EITHER
+    # formal (from then the list is fixed, so names/dietaries can't move).
     for fid in (from_formal, to_formal):
-        dt = conn.execute("SELECT dt FROM formals WHERE id=?", (fid,)).fetchone()
-        if dt is None:
+        f = conn.execute("SELECT host_college, dt, catering_sent FROM formals "
+                         "WHERE id=?", (fid,)).fetchone()
+        if f is None:
             raise SwapError("That formal no longer exists.")
-        if hours_until_formal(dt["dt"]) < cutoff:
-            days = int(cutoff // 24)
-            when = f"{days} day{'s' if days != 1 else ''}" if cutoff % 24 == 0 \
-                else f"{int(cutoff)} hours"
-            raise SwapError(f"Swaps must be arranged at least {when} before "
-                            "both formals.")
+        if hours_until_formal(f["dt"]) <= 0:
+            raise SwapError(f"The {f['host_college']} formal has already happened.")
+        if f["catering_sent"]:
+            raise SwapError(f"{f['host_college']} already has the final dietary list, "
+                            "so that place can no longer be swapped.")
 
 
 def propose_swap(conn, from_user, from_formal, to_user, to_formal):

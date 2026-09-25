@@ -490,10 +490,7 @@ def swaps():
     db = get_db()
     uid = current_user()["id"]
     published = _swaps_published(db)
-    mine = db.execute(
-        "SELECT f.id AS formal_id, f.host_college, f.dt FROM allocations a "
-        "JOIN formals f ON f.id=a.formal_id WHERE a.user_id=? AND a.status='active' "
-        "ORDER BY f.dt", (uid,)).fetchall()
+    mine = _swappable_holdings(db, uid)
 
     def hydrate(rows):
         out = []
@@ -517,19 +514,17 @@ def swaps():
     outgoing = hydrate(db.execute(
         "SELECT * FROM swap_requests WHERE from_user=? AND status='pending' "
         "ORDER BY id DESC", (uid,)).fetchall())
-    from ..services import swap_cutoff_hours
     return render_template("swaps.html", published=published, mine=mine,
-                           incoming=incoming, outgoing=outgoing,
-                           swap_cutoff=_days_label(swap_cutoff_hours(db)))
+                           incoming=incoming, outgoing=outgoing)
 
 
-def _days_label(hours):
-    """Human label for a cut-off in hours: whole days as days, else hours."""
-    hours = int(hours)
-    if hours % 24 == 0:
-        d = hours // 24
-        return f"{d} day{'s' if d != 1 else ''}"
-    return f"{hours} hours"
+def _swappable_holdings(db, uid):
+    """A member's upcoming places whose host dietary list hasn't gone out yet."""
+    rows = db.execute(
+        "SELECT f.id AS formal_id, f.host_college, f.dt FROM allocations a "
+        "JOIN formals f ON f.id=a.formal_id WHERE a.user_id=? AND a.status='active' "
+        "AND f.catering_sent=0 ORDER BY f.dt", (uid,)).fetchall()
+    return [r for r in rows if hours_until_formal(r["dt"]) > 0]
 
 
 @bp.route("/swaps/holdings")
@@ -545,11 +540,8 @@ def swaps_holdings():
         return jsonify([])
     if other == current_user()["id"]:
         return jsonify([])
-    rows = db.execute(
-        "SELECT f.id, f.host_college, f.dt FROM allocations a "
-        "JOIN formals f ON f.id=a.formal_id WHERE a.user_id=? AND a.status='active' "
-        "ORDER BY f.dt", (other,)).fetchall()
-    return jsonify([{"formal_id": r["id"],
+    rows = _swappable_holdings(db, other)
+    return jsonify([{"formal_id": r["formal_id"],
                      "label": f"{r['host_college']} — {r['dt']}"} for r in rows])
 
 

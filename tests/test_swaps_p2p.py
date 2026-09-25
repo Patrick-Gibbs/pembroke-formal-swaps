@@ -49,33 +49,30 @@ def test_accept_fails_if_place_gone(db):
         accept_swap(db, rid, 2)
 
 
-def test_cutoff_blocks_swap_within_a_week(db):
+def test_swap_allowed_close_to_formal_if_list_not_sent(db):
+    # No fixed date cut-off any more: 2 days out is fine while the host list
+    # hasn't gone out.
     for u in (1, 2):
         add_user(db, u)
     from datetime import datetime, timedelta
-    # 5 days out — inside the 1-week swap window, so blocked (would be fine
-    # under the 72h *cancellation* cutoff, proving swaps use their own rule).
-    soon = (datetime.now() + timedelta(days=5)).strftime("%Y-%m-%d %H:%M")
+    soon = (datetime.now() + timedelta(days=2)).strftime("%Y-%m-%d %H:%M")
     add_formal(db, 1, slots=5, dt=soon, term="T1")
     add_formal(db, 2, slots=5, dt="2035-02-01 19:30", term="T1")
     db.execute("UPDATE formals SET status='allocated'")
     db.execute("INSERT INTO allocations(user_id, formal_id, status) VALUES (1,1,'active')")
     db.execute("INSERT INTO allocations(user_id, formal_id, status) VALUES (2,2,'active')")
-    with pytest.raises(SwapError):
+    assert propose_swap(db, 1, 1, 2, 2) > 0
+
+
+def test_swap_blocked_once_either_dietary_list_sent(db):
+    _setup(db)
+    rid = propose_swap(db, 1, 1, 2, 2)          # proposed while both lists unsent
+    db.execute("UPDATE formals SET catering_sent=1 WHERE id=2")
+    with pytest.raises(SwapError):              # accept re-checks -> blocked
+        accept_swap(db, rid, 2)
+    with pytest.raises(SwapError):              # and new proposals too
         propose_swap(db, 1, 1, 2, 2)
-
-
-def test_swap_allowed_beyond_a_week(db):
-    for u in (1, 2):
-        add_user(db, u)
-    from datetime import datetime, timedelta
-    ok = (datetime.now() + timedelta(days=9)).strftime("%Y-%m-%d %H:%M")
-    add_formal(db, 1, slots=5, dt=ok, term="T1")
-    add_formal(db, 2, slots=5, dt="2035-02-01 19:30", term="T1")
-    db.execute("UPDATE formals SET status='allocated'")
-    db.execute("INSERT INTO allocations(user_id, formal_id, status) VALUES (1,1,'active')")
-    db.execute("INSERT INTO allocations(user_id, formal_id, status) VALUES (2,2,'active')")
-    assert propose_swap(db, 1, 1, 2, 2) > 0  # 9 days out — allowed
+    assert _held(db, 1, 1) and _held(db, 2, 2)  # nothing moved
 
 
 def test_decline_and_cancel(db):
