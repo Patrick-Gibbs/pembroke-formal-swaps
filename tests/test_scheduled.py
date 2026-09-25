@@ -144,7 +144,7 @@ def test_catering_and_team_greeting(db):
     from swaps import emailer
     f = {"id": 1, "host_college": "Jesus", "dt": "2030-05-10 19:30",
          "host_name": "Jane Smith", "host_email": "a@x.ac.uk, b@x.ac.uk"}
-    rows = [{"first_name": "A", "last_name": "B", "dietary_flags": "", "dietary_other": ""}]
+    rows = [{"first_name": "A", "last_name": "B", "dietary": "—"}]
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         emailer.catering_email(["a@x.ac.uk", "b@x.ac.uk"], "admin@x.ac.uk", f, rows,

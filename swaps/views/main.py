@@ -639,14 +639,36 @@ def claim(formal_id):
         abort(404)
     if request.method == "POST":
         try:
-            claim_seat(db, current_user()["id"], formal_id)
-            flash(f"You're in! You have a place at the {f['host_college']} formal.", "ok")
+            inherited = claim_seat(db, current_user()["id"], formal_id)
+            if inherited:
+                from .. import emailer
+                emailer.claim_inherited_email(current_user()["email"], f,
+                                              inherited["replaced"], inherited["dietary"])
+                flash(f"You're in! You're taking {inherited['replaced']}'s place — "
+                      f"the host list is already set, so your meal is fixed to: "
+                      f"{inherited['dietary']}. We've emailed you the details.", "ok")
+            else:
+                flash(f"You're in! You have a place at the {f['host_college']} formal.",
+                      "ok")
             return redirect(url_for("main.me"))
         except ClaimError as e:
             flash(str(e), "error")
-    from ..services import user_missed_all
+    from ..services import user_missed_all, utcnow_str
     priority = user_missed_all(db, current_user()["id"], f["term"])
+    # If the host list is already out, the next released seat this user would get
+    # carries a frozen dietary — surface it before they claim.
+    inherit_preview = None
+    if f["catering_sent"]:
+        avail = "release_at" if priority else "COALESCE(general_at, release_at)"
+        row = db.execute(
+            f"SELECT orig_name, orig_dietary FROM released_slots "  # noqa: S608
+            f"WHERE formal_id=? AND claimed_by IS NULL AND orig_dietary IS NOT NULL "
+            f"AND {avail} <= ? ORDER BY release_at LIMIT 1",
+            (formal_id, utcnow_str())).fetchone()
+        if row:
+            inherit_preview = {"replaced": row["orig_name"], "dietary": row["orig_dietary"]}
     return render_template("claim.html", formal=f, priority=priority,
+                           inherit_preview=inherit_preview,
                            free=free_seats(db, formal_id, f["slots"], priority=priority))
 
 

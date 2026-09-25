@@ -33,6 +33,11 @@
          placeholder="jane@college.cam.ac.uk, formals@college.cam.ac.uk">
   <label>Host contact phone</label>
   <input type="text" name="host_phone" value="{{ f['host_phone'] if f else '' }}">
+  <label>Email host this many days before (attendance list + dietary; blank = 7)</label>
+  <input type="number" name="catering_lead_days" min="0" max="60" style="max-width:6rem"
+         value="{{ f['catering_lead_days'] if f and f['catering_lead_days'] is not none else '' }}">
+  <p class="muted">From this point the list is fixed: anyone who then claims a
+  freed seat inherits the dropped person's dietary (the host can't re-cater).</p>
   <label>Number of slots</label>
   <input type="number" name="slots" min="1" required value="{{ f['slots'] if f else 10 }}">
   <label>Term</label>

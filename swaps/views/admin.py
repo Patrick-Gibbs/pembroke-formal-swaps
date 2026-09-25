@@ -332,7 +332,18 @@ def _formal_from_form():
             request.form.get("host_email", "").strip()[:200],
             request.form.get("host_phone", "").strip()[:50],
             _parse_endowment(request.form.get("endowment_m", "")),
-            request.form.get("description", "").strip()[:2000])
+            request.form.get("description", "").strip()[:2000],
+            _parse_lead_days(request.form.get("catering_lead_days", "")))
+
+
+def _parse_lead_days(raw):
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return None
 
 
 def _parse_endowment(raw):
@@ -369,8 +380,8 @@ def formal_new():
         else:
             db.execute("INSERT INTO formals(host_college, dt, price, slots, term, "
                        "ballot_open, ballot_close, status, location, instructions, "
-                       "host_name, host_email, host_phone, endowment_m, description) "
-                       "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", vals)
+                       "host_name, host_email, host_phone, endowment_m, description, "
+                       "catering_lead_days) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", vals)
             _remember_endowment(db, vals[0], vals[13])
             audit(db, "admin", "formal_create", f"{vals[0]} {vals[1]}")
             seat_admin(db, vals[4])  # reserve the admin's seat if auto-attend on
@@ -394,7 +405,8 @@ def formal_edit(fid):
         db.execute("UPDATE formals SET host_college=?, dt=?, price=?, slots=?, term=?, "
                    "ballot_open=?, ballot_close=?, status=?, location=?, "
                    "instructions=?, host_name=?, host_email=?, host_phone=?, "
-                   "endowment_m=?, description=? WHERE id=?", vals + (fid,))
+                   "endowment_m=?, description=?, catering_lead_days=? WHERE id=?",
+                   vals + (fid,))
         _remember_endowment(db, vals[0], vals[13])
         audit(db, "admin", "formal_edit", f"id={fid} {vals[0]} {vals[1]}")
         flash("Saved.", "ok")
@@ -432,10 +444,10 @@ def formal_duplicate(fid):
     db.execute(
         "INSERT INTO formals(host_college, dt, price, slots, term, ballot_open, "
         "ballot_close, status, location, instructions, host_name, host_email, "
-        "host_phone, endowment_m, description) SELECT host_college, dt, price, "
-        "slots, term, ballot_open, ballot_close, 'open', location, instructions, "
-        "host_name, host_email, host_phone, endowment_m, description "
-        "FROM formals WHERE id=?", (fid,))
+        "host_phone, endowment_m, description, catering_lead_days) SELECT "
+        "host_college, dt, price, slots, term, ballot_open, ballot_close, 'open', "
+        "location, instructions, host_name, host_email, host_phone, endowment_m, "
+        "description, catering_lead_days FROM formals WHERE id=?", (fid,))
     audit(db, "admin", "formal_duplicate", f"from={fid}")
     seat_admin(db, f["term"])
     flash(f"Duplicated {f['host_college']} — edit the copy's date as needed.", "ok")
@@ -468,15 +480,16 @@ def formals_import():
             db.execute(
                 "INSERT INTO formals(host_college, dt, price, slots, term, "
                 "ballot_open, ballot_close, status, location, instructions, "
-                "host_name, host_email, host_phone, description) "
-                "VALUES (?,?,?,?,?,?,?,'open',?,?,?,?,?,?)",
+                "host_name, host_email, host_phone, description, catering_lead_days) "
+                "VALUES (?,?,?,?,?,?,?,'open',?,?,?,?,?,?,?)",
                 (college, dt, r.get("price", ""), slots,
                  r.get("term") or get_setting(db, "current_term"),
                  (r.get("ballot_open") or "").replace("T", " "),
                  (r.get("ballot_close") or "").replace("T", " "),
                  r.get("location", ""), r.get("instructions", ""),
                  r.get("host_name", ""), r.get("host_email", ""),
-                 r.get("host_phone", ""), r.get("description", "")))
+                 r.get("host_phone", ""), r.get("description", ""),
+                 _parse_lead_days(r.get("catering_lead_days", ""))))
             created += 1
         if created:
             audit(db, "admin", "formals_import", f"created={created}")
@@ -679,22 +692,29 @@ def roster(fid):
     f = db.execute("SELECT * FROM formals WHERE id=?", (fid,)).fetchone()
     if f is None:
         return redirect(url_for("admin.dashboard"))
-    rows = db.execute(
-        "SELECT a.id AS alloc_id, a.status, a.source, u.id AS user_id, u.first_name, "
-        "u.last_name, u.email, u.dietary_flags, u.dietary_other "
-        "FROM allocations a JOIN users u ON u.id = a.user_id "
+    from ..services import resolve_dietary
+    raw = db.execute(
+        "SELECT a.id AS alloc_id, a.status, a.source, a.inherited_dietary, "
+        "a.inherited_from, u.id AS user_id, u.first_name, u.last_name, u.email, "
+        "u.dietary_flags, u.dietary_other FROM allocations a "
+        "JOIN users u ON u.id = a.user_id "
         "WHERE a.formal_id=? ORDER BY a.status, u.last_name", (fid,)).fetchall()
+    rows = []
+    for r in raw:
+        d = dict(r)
+        d["dietary"] = resolve_dietary(r["inherited_dietary"], r["dietary_flags"],
+                                       r["dietary_other"])
+        rows.append(d)
     if request.args.get("csv"):
         buf = io.StringIO()
         w = csv.writer(buf)
-        w.writerow(["first_name", "last_name", "email", "dietary", "status", "source"])
+        w.writerow(["first_name", "last_name", "email", "dietary", "in_place_of",
+                    "status", "source"])
         for r in rows:
             if r["status"] != "active":
                 continue
-            diet = ", ".join(filter(None, [r["dietary_flags"].replace(",", "; "),
-                                           r["dietary_other"]]))
-            w.writerow([r["first_name"], r["last_name"], r["email"], diet,
-                        r["status"], r["source"]])
+            w.writerow([r["first_name"], r["last_name"], r["email"], r["dietary"],
+                        r["inherited_from"] or "", r["status"], r["source"]])
         return Response(buf.getvalue(), mimetype="text/csv", headers={
             "Content-Disposition":
                 f"attachment; filename=formal-{fid}-{f['host_college']}.csv"})

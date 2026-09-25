@@ -161,3 +161,44 @@ def test_release_timing_head_start_invariant(db):
         rel = _dt.fromisoformat(r["release_at"])
         gen = _dt.fromisoformat(r["general_at"])
         assert (gen - rel).total_seconds() >= 2 * 3600, seed
+
+
+def test_claim_inherits_dietary_after_list_sent(db):
+    add_user(db, 1); add_user(db, 2)
+    add_formal(db, 1, slots=1)
+    # user1 has dietary; they hold the seat
+    db.execute("UPDATE users SET dietary_flags='Vegan', dietary_other='no nuts' WHERE id=1")
+    claim_seat(db, 1, 1)
+    # host list already sent for this formal
+    db.execute("UPDATE formals SET catering_sent=1")
+    aid = db.execute("SELECT id FROM allocations WHERE user_id=1").fetchone()["id"]
+    cancel_allocation(db, 1, aid)
+    db.execute("UPDATE released_slots SET release_at=?, general_at=?", (utc(-60), utc(-60)))
+    # user2 (different dietary) claims -> inherits user1's frozen meal
+    db.execute("UPDATE users SET dietary_flags='Halal' WHERE id=2")
+    info = claim_seat(db, 2, 1)
+    assert info is not None
+    assert info["replaced"] == "U1 Test"
+    assert "Vegan" in info["dietary"] and "no nuts" in info["dietary"]
+    # roster / catering shows the frozen dietary, not user2's own
+    from swaps.services import catering_list
+    cl = catering_list(db, 1)
+    assert cl[0]["dietary"] == info["dietary"]
+    a = db.execute("SELECT inherited_dietary, inherited_from FROM allocations "
+                   "WHERE user_id=2 AND formal_id=1").fetchone()
+    assert a["inherited_from"] == "U1 Test"
+
+
+def test_no_inheritance_before_list_sent(db):
+    add_user(db, 1); add_user(db, 2)
+    add_formal(db, 1, slots=1)
+    db.execute("UPDATE users SET dietary_flags='Vegan' WHERE id=1")
+    claim_seat(db, 1, 1)
+    aid = db.execute("SELECT id FROM allocations WHERE user_id=1").fetchone()["id"]
+    cancel_allocation(db, 1, aid)   # catering_sent still 0
+    db.execute("UPDATE released_slots SET release_at=?, general_at=?", (utc(-60), utc(-60)))
+    db.execute("UPDATE users SET dietary_flags='Halal' WHERE id=2")
+    info = claim_seat(db, 2, 1)
+    assert info is None             # list not sent -> claimer keeps own dietary
+    from swaps.services import catering_list
+    assert catering_list(db, 1)[0]["dietary"] == "Halal"

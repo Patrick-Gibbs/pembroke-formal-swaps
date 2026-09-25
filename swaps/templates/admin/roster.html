@@ -30,7 +30,7 @@
       <td>{{ r['first_name'] }}</td>
       <td>{{ r['last_name'] }}</td>
       <td>{{ r['email'] }}</td>
-      <td>{{ ", ".join((r['dietary_flags'].split(',') if r['dietary_flags'] else []) + ([r['dietary_other']] if r['dietary_other'] else [])) }}</td>
+      <td>{{ r['dietary'] }}</td>
     </tr>
     {% endfor %}
   </table>
@@ -39,9 +39,10 @@
   <tr><th>Name</th><th>Email</th><th>Dietary</th><th>Status</th><th>Source</th><th></th></tr>
   {% for r in rows %}
   <tr>
-    <td>{{ r['first_name'] }} {{ r['last_name'] }}</td>
+    <td>{{ r['first_name'] }} {{ r['last_name'] }}
+      {% if r['inherited_from'] %}<br><span class="muted">in place of {{ r['inherited_from'] }} (fixed meal)</span>{% endif %}</td>
     <td>{{ r['email'] }}</td>
-    <td>{{ ", ".join((r['dietary_flags'].split(',') if r['dietary_flags'] else []) + ([r['dietary_other']] if r['dietary_other'] else [])) }}</td>
+    <td>{{ r['dietary'] }}</td>
     <td>{{ r['status'] }}</td>
     <td>{{ r['source'] }}</td>
     <td>{% if r['status'] == 'active' %}

@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS formals (
     endowment_m REAL,                       -- host college endowment £m (nullable)
     reminder_sent INTEGER NOT NULL DEFAULT 0,   -- 9am day-of email done
     review_sent INTEGER NOT NULL DEFAULT 0,     -- 9pm review request done
-    catering_sent INTEGER NOT NULL DEFAULT 0,   -- host catering list emailed (1wk before)
+    catering_sent INTEGER NOT NULL DEFAULT 0,   -- host catering list emailed
+    catering_lead_days INTEGER,                 -- days before to email host (null=default 7)
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -50,6 +51,8 @@ CREATE TABLE IF NOT EXISTS allocations (
     formal_id INTEGER NOT NULL REFERENCES formals(id),
     status TEXT NOT NULL DEFAULT 'active',   -- active | cancelled
     source TEXT NOT NULL DEFAULT 'ballot',   -- ballot | claim | admin
+    inherited_dietary TEXT,                  -- frozen dietary if claimed after list sent
+    inherited_from TEXT,                     -- name of the person this seat replaced
     notified INTEGER NOT NULL DEFAULT 0,     -- result email sent (at publish)
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     cancelled_at TEXT
@@ -63,6 +66,8 @@ CREATE TABLE IF NOT EXISTS released_slots (
     allocation_id INTEGER REFERENCES allocations(id),
     release_at TEXT NOT NULL,        -- UTC; priority claimers can take it from here
     general_at TEXT,                 -- UTC; everyone else can take it from here (+2h)
+    orig_name TEXT,                  -- who dropped out (snapshot at cancel time)
+    orig_dietary TEXT,               -- their dietary, frozen for the host's list
     opened INTEGER NOT NULL DEFAULT 0,
     notified INTEGER NOT NULL DEFAULT 0,        -- priority subscribers notified
     general_notified INTEGER NOT NULL DEFAULT 0, -- everyone else notified

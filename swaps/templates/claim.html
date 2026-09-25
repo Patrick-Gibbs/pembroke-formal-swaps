@@ -9,6 +9,12 @@
   {% if priority %}<p class="muted">You missed out in the ballot, so you get a
   head start (at least two hours) on released places before they open to
   everyone.</p>{% endif %}
+  {% if inherit_preview %}
+  <p class="note">⚠️ The host college already has the final catering list, so
+  you'd be taking <b>{{ inherit_preview['replaced'] }}</b>'s place and their
+  fixed meal: <b>{{ inherit_preview['dietary'] }}</b>. Only claim if that works
+  for you.</p>
+  {% endif %}
   <form method="post">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <button>Claim this place</button>

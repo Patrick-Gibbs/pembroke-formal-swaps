@@ -34,6 +34,7 @@ def init_db(db_path=None):
                      ("reminder_sent", "INTEGER NOT NULL DEFAULT 0"),
                      ("review_sent", "INTEGER NOT NULL DEFAULT 0"),
                      ("catering_sent", "INTEGER NOT NULL DEFAULT 0"),
+                     ("catering_lead_days", "INTEGER"),
                      ("host_name", "TEXT NOT NULL DEFAULT ''"),
                      ("host_email", "TEXT NOT NULL DEFAULT ''"),
                      ("host_phone", "TEXT NOT NULL DEFAULT ''"),
@@ -46,6 +47,10 @@ def init_db(db_path=None):
                      "INTEGER NOT NULL DEFAULT 0")
         # Pre-existing allocations were emailed under the old flow.
         conn.execute("UPDATE allocations SET notified=1")
+    if "inherited_dietary" not in acols:
+        conn.execute("ALTER TABLE allocations ADD COLUMN inherited_dietary TEXT")
+    if "inherited_from" not in acols:
+        conn.execute("ALTER TABLE allocations ADD COLUMN inherited_from TEXT")
     gcols = {r["name"] for r in conn.execute("PRAGMA table_info(ballot_groups)")}
     if "party_name" not in gcols:
         conn.execute("ALTER TABLE ballot_groups ADD COLUMN party_name "
@@ -56,6 +61,10 @@ def init_db(db_path=None):
     if "general_notified" not in rscols:
         conn.execute("ALTER TABLE released_slots ADD COLUMN general_notified "
                      "INTEGER NOT NULL DEFAULT 0")
+    if "orig_name" not in rscols:
+        conn.execute("ALTER TABLE released_slots ADD COLUMN orig_name TEXT")
+    if "orig_dietary" not in rscols:
+        conn.execute("ALTER TABLE released_slots ADD COLUMN orig_dietary TEXT")
     ucols = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
     if "calendar_token" not in ucols:
         conn.execute("ALTER TABLE users ADD COLUMN calendar_token TEXT")

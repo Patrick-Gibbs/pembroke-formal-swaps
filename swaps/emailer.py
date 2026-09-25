@@ -277,23 +277,14 @@ def catering_email(to, cc, formal, rows, admin_name=""):
     else:
         greeting = f"Dear {formal['host_college']} formals team,"
     signoff = f"— {admin_name}" if admin_name else "— Pembroke Formal Swaps"
-    def diet(r):
-        parts = list(filter(None, r["dietary_flags"].split(","))) if r["dietary_flags"] else []
-        if r["dietary_other"]:
-            parts.append(r["dietary_other"])
-        return ", ".join(parts) or "—"
-
     body = "".join(
         f"<tr><td style='border:1px solid #ccc;padding:4px 8px'>{r['first_name']} {r['last_name']}</td>"
-        f"<td style='border:1px solid #ccc;padding:4px 8px'>{diet(r)}</td></tr>"
+        f"<td style='border:1px solid #ccc;padding:4px 8px'>{r['dietary']}</td></tr>"
         for r in rows)
-    # dietary tallies
     tally = {}
     for r in rows:
-        for d in (list(filter(None, r["dietary_flags"].split(","))) if r["dietary_flags"] else []):
-            tally[d] = tally.get(d, 0) + 1
-        if r["dietary_other"]:
-            tally[r["dietary_other"]] = tally.get(r["dietary_other"], 0) + 1
+        if r["dietary"] and r["dietary"] != "—":
+            tally[r["dietary"]] = tally.get(r["dietary"], 0) + 1
     summary = ", ".join(f"{d} ×{n}" for d, n in sorted(tally.items())) or "none noted"
     table = ("<table style='border-collapse:collapse'>"
              "<tr><th style='border:1px solid #ccc;padding:4px 8px;text-align:left'>Name</th>"
@@ -304,6 +295,19 @@ def catering_email(to, cc, formal, rows, admin_name=""):
         "dt": formal["dt"], "count": len(rows), "table": table,
         "summary": summary, "signoff": signoff})
     return send(to, subject, html, cc=cc)
+
+
+def claim_inherited_email(to, formal, replaced, dietary):
+    return send(
+        to, f"You're in — {formal['host_college']} formal on {formal['dt']}",
+        f"<p>You've claimed a place at the <b>{formal['host_college']}</b> formal "
+        f"on <b>{formal['dt']}</b>, in place of <b>{replaced}</b>.</p>"
+        f"<p>The host college has already been given the final catering list, so "
+        f"your meal is fixed to the one ordered for this place:</p>"
+        f"<p><b>Dietary / meal: {dietary}</b></p>"
+        f"<p>If that won't work for you, please contact the swaps officer as soon "
+        f"as possible. Manage your places at "
+        f"<a href=\"{config.SITE_URL}/me\">{config.SITE_URL}/me</a>.</p>")
 
 
 def review_request_email(to, formal, link):

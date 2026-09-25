@@ -626,14 +626,27 @@ class CancelError(Exception):
     pass
 
 
+def resolve_dietary(inherited, flags, other):
+    """A seat's effective dietary string. If `inherited` is not None the seat's
+    dietary is frozen (claimed after the host list went out); otherwise it's the
+    member's own flags + free text. Empty renders as an em-dash."""
+    if inherited is not None:
+        return inherited or "—"
+    parts = list(filter(None, (flags or "").split(",")))
+    if other:
+        parts.append(other)
+    return ", ".join(parts) or "—"
+
+
 def cancel_allocation(conn, user_id, allocation_id, rng=None, actor=None):
     """Cancel an active allocation; hold the seat for a random 0-60 min."""
     rng = rng or secrets.SystemRandom()
     with immediate(conn):
         alloc = conn.execute(
-            "SELECT a.*, f.dt, f.host_college FROM allocations a "
-            "JOIN formals f ON f.id = a.formal_id WHERE a.id=? AND a.status='active'",
-            (allocation_id,)).fetchone()
+            "SELECT a.*, f.dt, f.host_college, u.first_name, u.last_name, "
+            "u.dietary_flags, u.dietary_other FROM allocations a "
+            "JOIN formals f ON f.id = a.formal_id JOIN users u ON u.id = a.user_id "
+            "WHERE a.id=? AND a.status='active'", (allocation_id,)).fetchone()
         if alloc is None or (user_id is not None and alloc["user_id"] != user_id):
             raise CancelError("No such active booking.")
         cutoff = cancel_cutoff_hours(conn)
@@ -651,12 +664,19 @@ def cancel_allocation(conn, user_id, allocation_id, rng=None, actor=None):
         gen_local = daytime_clamp(rel_local + timedelta(seconds=gap))
         release_at = _local_to_utc_str(rel_local)
         general_at = _local_to_utc_str(gen_local)
+        # Snapshot who dropped and their dietary. If the host list has already
+        # gone out, whoever claims this seat inherits this dietary (the host
+        # can't re-cater), so keep the frozen dietary they held for this seat.
+        orig_name = f"{alloc['first_name']} {alloc['last_name']}"
+        orig_diet = resolve_dietary(alloc["inherited_dietary"], alloc["dietary_flags"],
+                                    alloc["dietary_other"])
         conn.execute("UPDATE allocations SET status='cancelled', cancelled_at=? WHERE id=?",
                      (utcnow_str(), allocation_id))
         conn.execute(
-            "INSERT INTO released_slots(formal_id, allocation_id, release_at, general_at) "
-            "VALUES (?,?,?,?)",
-            (alloc["formal_id"], allocation_id, release_at, general_at))
+            "INSERT INTO released_slots(formal_id, allocation_id, release_at, general_at, "
+            "orig_name, orig_dietary) VALUES (?,?,?,?,?,?)",
+            (alloc["formal_id"], allocation_id, release_at, general_at,
+             orig_name, orig_diet))
         audit(conn, actor or f"user:{alloc['user_id']}", "cancel",
               f"allocation={allocation_id} formal={alloc['formal_id']} "
               f"release_at={release_at}Z general_at={general_at}Z")
@@ -670,7 +690,11 @@ class ClaimError(Exception):
 def claim_seat(conn, user_id, formal_id, actor=None):
     """Atomically claim a free seat. BEGIN IMMEDIATE serializes writers, so
     the capacity check + insert are race-free; the partial unique index on
-    active (user_id, formal_id) is a second line of defence."""
+    active (user_id, formal_id) is a second line of defence.
+
+    Returns None normally, or, if the host's catering list has already been sent
+    and this claim takes a released seat, a dict {replaced, dietary} — the seat's
+    frozen dietary the claimer inherits (the host can't re-cater)."""
     with immediate(conn):
         f = conn.execute("SELECT * FROM formals WHERE id=? AND status IN ('open','allocated')",
                          (formal_id,)).fetchone()
@@ -692,20 +716,33 @@ def claim_seat(conn, user_id, formal_id, actor=None):
                 raise ClaimError("This place is in its priority window for members "
                                  "who missed out — it opens to everyone shortly.")
             raise ClaimError("Sorry — no free places (someone may have beaten you to it).")
-        conn.execute(
+        cur = conn.execute(
             "INSERT INTO allocations(user_id, formal_id, status, source) "
             "VALUES (?,?,'active','claim')", (user_id, formal_id))
+        alloc_id = cur.lastrowid
         # Consume one released seat now available to this claimer, if any (a
         # seat may also be free simply because the ballot didn't fill it).
         avail = "release_at" if priority else "COALESCE(general_at, release_at)"
         row = conn.execute(
-            f"SELECT id FROM released_slots WHERE formal_id=? AND claimed_by IS NULL "  # noqa: S608
-            f"AND {avail} <= ? ORDER BY release_at LIMIT 1",
-            (formal_id, utcnow_str())).fetchone()
+            f"SELECT id, orig_name, orig_dietary FROM released_slots "  # noqa: S608
+            f"WHERE formal_id=? AND claimed_by IS NULL AND {avail} <= ? "
+            f"ORDER BY release_at LIMIT 1", (formal_id, utcnow_str())).fetchone()
+        inherited = None
         if row:
             conn.execute("UPDATE released_slots SET claimed_by=?, claimed_at=? WHERE id=?",
                          (user_id, utcnow_str(), row["id"]))
-        audit(conn, actor or f"user:{user_id}", "claim", f"formal={formal_id}")
+            # After the host list is sent, freeze the dietary to the dropped
+            # person's — the claimer takes their catering slot as-is.
+            if f["catering_sent"] and row["orig_dietary"] is not None:
+                conn.execute("UPDATE allocations SET inherited_dietary=?, "
+                             "inherited_from=? WHERE id=?",
+                             (row["orig_dietary"], row["orig_name"], alloc_id))
+                inherited = {"replaced": row["orig_name"],
+                             "dietary": row["orig_dietary"]}
+        audit(conn, actor or f"user:{user_id}", "claim",
+              f"formal={formal_id}" + (f" inherits from {row['orig_name']}"
+                                       if inherited else ""))
+        return inherited
 
 
 def attendee_emails(conn, formal_id):
@@ -716,12 +753,18 @@ def attendee_emails(conn, formal_id):
 
 
 def catering_list(conn, formal_id):
-    """Active attendees of a formal with dietary info (for the host college)."""
-    return conn.execute(
-        "SELECT u.first_name, u.last_name, u.dietary_flags, u.dietary_other "
-        "FROM allocations a JOIN users u ON u.id = a.user_id "
+    """Active attendees of a formal with resolved dietary (for the host). Each
+    row is a dict with first_name, last_name, dietary (a single resolved string
+    that respects a seat's frozen/inherited dietary)."""
+    rows = conn.execute(
+        "SELECT u.first_name, u.last_name, a.inherited_dietary, u.dietary_flags, "
+        "u.dietary_other FROM allocations a JOIN users u ON u.id = a.user_id "
         "WHERE a.formal_id=? AND a.status='active' "
         "ORDER BY u.last_name, u.first_name", (formal_id,)).fetchall()
+    return [{"first_name": r["first_name"], "last_name": r["last_name"],
+             "dietary": resolve_dietary(r["inherited_dietary"], r["dietary_flags"],
+                                        r["dietary_other"])}
+            for r in rows]
 
 
 def catering_recipients(host_email_str, admin_email):
@@ -765,9 +808,12 @@ def send_scheduled_emails(conn, send_reminder, send_review, send_catering=None,
         f = conn.execute("SELECT * FROM formals WHERE id=?", (row["id"],)).fetchone()
         start = parse_local(f["dt"])
 
-        # Host catering list: once, from a week before up to the formal's start.
+        # Host catering list: once, from the formal's lead-days point up to its
+        # start. Lead days are per-formal (default CATERING_LEAD_DAYS).
+        lead = f["catering_lead_days"] if f["catering_lead_days"] is not None \
+            else CATERING_LEAD_DAYS
         if (send_catering and not f["catering_sent"]
-                and start - timedelta(days=CATERING_LEAD_DAYS) <= now < start):
+                and start - timedelta(days=lead) <= now < start):
             to, cc = catering_recipients(f["host_email"], admin_email)
             attendees = catering_list(conn, f["id"])
             if published and attendees and to:
