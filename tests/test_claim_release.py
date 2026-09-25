@@ -202,3 +202,27 @@ def test_no_inheritance_before_list_sent(db):
     assert info is None             # list not sent -> claimer keeps own dietary
     from swaps.services import catering_list
     assert catering_list(db, 1)[0]["dietary"] == "Halal"
+
+
+def test_cancel_charge_window(db):
+    from swaps.db import set_setting
+    add_user(db, 1)
+    set_setting(db, "cancel_cutoff_hours", "12")
+    set_setting(db, "cancel_charge_hours", "72")
+    in_charge = (datetime.now() + timedelta(hours=30)).strftime("%Y-%m-%d %H:%M")
+    free = (datetime.now() + timedelta(days=10)).strftime("%Y-%m-%d %H:%M")
+    locked = (datetime.now() + timedelta(hours=6)).strftime("%Y-%m-%d %H:%M")
+    add_formal(db, 1, slots=2, dt=free)
+    add_formal(db, 2, slots=2, dt=in_charge)
+    add_formal(db, 3, slots=2, dt=free)
+    claim_seat(db, 1, 1); claim_seat(db, 1, 2); claim_seat(db, 1, 3)
+    aid = lambda fid: db.execute("SELECT id FROM allocations WHERE user_id=1 AND "
+                                 "formal_id=? AND status='active'", (fid,)).fetchone()["id"]
+    assert cancel_allocation(db, 1, aid(1))["charged"] is False   # >72h: free
+    assert cancel_allocation(db, 1, aid(2))["charged"] is True    # 12-72h: charged
+    a3 = aid(3)
+    db.execute("UPDATE formals SET dt=? WHERE id=3", (locked,))
+    with pytest.raises(CancelError):                              # <12h: blocked
+        cancel_allocation(db, 1, a3)
+    # admin cancellations never charge and ignore the cutoff
+    assert cancel_allocation(db, None, a3, actor="admin")["charged"] is False

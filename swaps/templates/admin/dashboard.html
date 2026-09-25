@@ -61,6 +61,10 @@
     <label>Cancellation cut-off (hours before the formal; also closes claims)</label>
     <input type="number" name="cancel_cutoff_hours" min="0" max="336" step="1"
            value="{{ cancel_cutoff }}" style="max-width:7rem">
+    <label>Cancellation charge window (hours before the formal; cancelling inside
+    this is still allowed but charges the member)</label>
+    <input type="number" name="cancel_charge_hours" min="0" max="336" step="1"
+           value="{{ cancel_charge }}" style="max-width:7rem">
     <label>Peer-swap cut-off (hours before either formal; 168 = one week)</label>
     <input type="number" name="swap_cutoff_hours" min="0" max="1000" step="1"
            value="{{ swap_cutoff }}" style="max-width:7rem">

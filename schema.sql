@@ -222,7 +222,8 @@ CREATE TABLE IF NOT EXISTS settings (
 INSERT OR IGNORE INTO settings(key, value) VALUES ('attendee_list_public', '1');
 INSERT OR IGNORE INTO settings(key, value) VALUES ('current_term', '');
 INSERT OR IGNORE INTO settings(key, value) VALUES ('results_published', '1');
-INSERT OR IGNORE INTO settings(key, value) VALUES ('cancel_cutoff_hours', '72');
+INSERT OR IGNORE INTO settings(key, value) VALUES ('cancel_cutoff_hours', '12');
+INSERT OR IGNORE INTO settings(key, value) VALUES ('cancel_charge_hours', '72');
 INSERT OR IGNORE INTO settings(key, value) VALUES ('swap_cutoff_hours', '168');
 INSERT OR IGNORE INTO settings(key, value) VALUES ('admin_email', '');
 INSERT OR IGNORE INTO settings(key, value) VALUES ('admin_name', '');

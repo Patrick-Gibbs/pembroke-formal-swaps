@@ -52,6 +52,16 @@ def cancel_cutoff_hours(conn):
         return config.CANCEL_CUTOFF_HOURS
 
 
+def cancel_charge_hours(conn):
+    """Cancelling within this many hours of a formal charges the member for the
+    ticket (they can still cancel, up to the hard cutoff). Admin-editable."""
+    try:
+        return float(get_setting(conn, "cancel_charge_hours", "")
+                     or config.CANCEL_CHARGE_HOURS)
+    except ValueError:
+        return config.CANCEL_CHARGE_HOURS
+
+
 def swap_cutoff_hours(conn):
     """Hours before a formal at which peer-to-peer swaps close. Admin-editable;
     falls back to config.SWAP_CUTOFF_HOURS (a week)."""
@@ -639,7 +649,11 @@ def resolve_dietary(inherited, flags, other):
 
 
 def cancel_allocation(conn, user_id, allocation_id, rng=None, actor=None):
-    """Cancel an active allocation; hold the seat for a random 0-60 min."""
+    """Cancel an active allocation and release the seat at a random time.
+
+    Returns {"release_at", "charged"}: `charged` is True when a member cancels
+    inside the charge window (still allowed, but they're billed for the ticket).
+    Admin cancellations (user_id is None) never charge."""
     rng = rng or secrets.SystemRandom()
     with immediate(conn):
         alloc = conn.execute(
@@ -650,9 +664,11 @@ def cancel_allocation(conn, user_id, allocation_id, rng=None, actor=None):
         if alloc is None or (user_id is not None and alloc["user_id"] != user_id):
             raise CancelError("No such active booking.")
         cutoff = cancel_cutoff_hours(conn)
-        if user_id is not None and hours_until_formal(alloc["dt"]) < cutoff:
+        hrs = hours_until_formal(alloc["dt"])
+        if user_id is not None and hrs < cutoff:
             raise CancelError(f"Cancellations close {int(cutoff)} hours "
                               "before the formal.")
+        charged = user_id is not None and hrs < cancel_charge_hours(conn)
         # Two randomised, unpredictable stages (see the constants above), both
         # clamped to the 09:00–19:00 window so nobody is emailed at night —
         # rolling over to the next morning if need be. The random gap between
@@ -679,8 +695,9 @@ def cancel_allocation(conn, user_id, allocation_id, rng=None, actor=None):
              orig_name, orig_diet))
         audit(conn, actor or f"user:{alloc['user_id']}", "cancel",
               f"allocation={allocation_id} formal={alloc['formal_id']} "
-              f"release_at={release_at}Z general_at={general_at}Z")
-        return release_at
+              f"release_at={release_at}Z general_at={general_at}Z"
+              + (" CHARGED" if charged else ""))
+        return {"release_at": release_at, "charged": charged}
 
 
 class ClaimError(Exception):

@@ -11,8 +11,8 @@ from ..db import get_db, get_setting, audit
 from ..security import (chat_global_limited, chat_rate_limited, client_ip,
                         current_user, login_required)
 from ..services import (CancelError, ClaimError, cancel_allocation,
-                        cancel_cutoff_hours, claim_seat, free_seats,
-                        hours_until_formal, local_now, parse_local)
+                        cancel_charge_hours, cancel_cutoff_hours, claim_seat,
+                        free_seats, hours_until_formal, local_now, parse_local)
 
 PHOTO_MAX_DIM = 2000   # longest edge, px — larger uploads are downscaled
 MAX_REVIEW_PHOTOS = 3
@@ -295,8 +295,13 @@ def me():
         "JOIN formals f ON f.id = s.formal_id WHERE s.user_id=? ORDER BY f.dt",
         (user["id"],)).fetchall()
     cutoff = cancel_cutoff_hours(db)
+    charge_h = cancel_charge_hours(db)
     cancellable = {a["id"]: (a["status"] == "active"
                              and hours_until_formal(a["dt"]) >= cutoff)
+                   for a in allocs}
+    # Cancellable but inside the charge window -> warn they'll be billed.
+    will_charge = {a["id"]: (cancellable[a["id"]]
+                             and hours_until_formal(a["dt"]) < charge_h)
                    for a in allocs}
     past = {a["id"]: (a["status"] == "active" and hours_until_formal(a["dt"]) < 0)
             for a in allocs}
@@ -321,9 +326,10 @@ def me():
         "favourite": fav[0][0] if fav else None,
     }
     return render_template("me.html", allocs=allocs, subs=subs,
-                           cancellable=cancellable, past=past, reviewed_ids=reviewed_ids,
-                           cutoff_h=int(cutoff), cal_url=cal_url,
-                           reviews=reviews, stats=stats)
+                           cancellable=cancellable, will_charge=will_charge,
+                           past=past, reviewed_ids=reviewed_ids,
+                           cutoff_h=int(cutoff), charge_h=int(charge_h),
+                           cal_url=cal_url, reviews=reviews, stats=stats)
 
 
 @bp.route("/profile")
@@ -622,9 +628,15 @@ def swaps_respond(req_id, action):
 def cancel(alloc_id):
     db = get_db()
     try:
-        cancel_allocation(db, current_user()["id"], alloc_id)
-        flash("Cancelled. The place will be released to others at a random time "
-              "within the next hour.", "ok")
+        res = cancel_allocation(db, current_user()["id"], alloc_id)
+        if res["charged"]:
+            charge_h = int(cancel_charge_hours(db))
+            flash(f"Cancelled. This was within {charge_h} hours of the formal, so "
+                  "you will be charged for the swap. The place will be released to "
+                  "others at a deliberately unpredictable time.", "ok")
+        else:
+            flash("Cancelled. The place will be released to others at a "
+                  "deliberately unpredictable time.", "ok")
     except CancelError as e:
         flash(str(e), "error")
     return redirect(url_for("main.me"))

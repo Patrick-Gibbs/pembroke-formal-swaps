@@ -26,9 +26,9 @@
     <td>
       {% if cancellable[a['id']] %}
       <form class="inline" method="post" action="/cancel/{{ a['id'] }}"
-            onsubmit="return confirm('Cancel your place at {{ a['host_college'] }}? It will be offered to others.')">
+            onsubmit="return confirm('{% if will_charge[a['id']] %}This is within {{ charge_h }} hours of the formal — cancelling means you WILL be charged for the swap. Cancel anyway?{% else %}Cancel your place at {{ a['host_college'] }}? It will be offered to others.{% endif %}')">
         <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-        <button class="small danger">Cancel</button>
+        <button class="small danger">Cancel{% if will_charge[a['id']] %} (charged){% endif %}</button>
       </form>
       {% elif past[a['id']] %}
       {% if a['formal_id'] in reviewed_ids %}<a class="btn ghost" style="font-size:.8rem;padding:.15rem .5rem" href="/review/{{ a['formal_id'] }}">Edit review</a>
@@ -42,8 +42,10 @@
 </table>
 <p class="muted">Cancelling releases your place at a deliberately unpredictable
 time — first to members who missed out, then to everyone a few hours later — so
-you can't hand your place to a specific person. No cancellations in the
-{{ cutoff_h }} hours before a formal.</p>
+you can't hand your place to a specific person. Cancellations in the
+{{ charge_h }} hours before a formal will result in you getting charged for the
+formal swap. You can cancel up to {{ cutoff_h }} hours before; after that the
+place is locked.</p>
 {% endif %}
 <h2>Add to your calendar</h2>
 <div class="card">

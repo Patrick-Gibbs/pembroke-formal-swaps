@@ -38,7 +38,8 @@ TRUST_PROXY = os.environ.get("TRUST_PROXY", "1") == "1"
 # Set 0 only for plain-HTTP local testing; must be 1 in production.
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "1") == "1"
 
-CANCEL_CUTOFF_HOURS = 72   # fallback; live value is the cancel_cutoff_hours setting
+CANCEL_CUTOFF_HOURS = 12   # fallback; live value is the cancel_cutoff_hours setting
+CANCEL_CHARGE_HOURS = 72   # cancelling within this window charges the member
 SWAP_CUTOFF_HOURS = 168    # a week; fallback for the swap_cutoff_hours setting
 VERIFY_TOKEN_MAX_AGE = 24 * 3600
 TIMEZONE = "Europe/London"

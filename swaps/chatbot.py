@@ -8,7 +8,7 @@ import logging
 
 from . import config
 from .db import get_setting
-from .services import cancel_cutoff_hours, free_seats
+from .services import cancel_charge_hours, cancel_cutoff_hours, free_seats
 
 log = logging.getLogger("swaps.chatbot")
 
@@ -55,8 +55,11 @@ def build_context(db):
     if t_open or t_close:
         lines.append(f"Ballot window: opens {t_open or '?'}, closes "
                      f"{t_close or '?'} (UK time).")
-    lines.append(f"Cancellation cut-off: {int(cancel_cutoff_hours(db))} hours "
-                 "before a formal.")
+    lines.append(f"Cancellation policy: members can cancel up to "
+                 f"{int(cancel_cutoff_hours(db))} hours before a formal; cancelling "
+                 f"within {int(cancel_charge_hours(db))} hours of it means they are "
+                 "charged for the swap. Released places reopen at a deliberately "
+                 "unpredictable time, first to members who missed out.")
 
     formals = db.execute(
         "SELECT * FROM formals WHERE term=? AND status IN ('open','allocated') "
