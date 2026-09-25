@@ -3,6 +3,10 @@
 {% block content %}
 <h1>Swaps officer</h1>
 <div class="card">
+  {% if photo %}
+  <p><img src="/photos/{{ photo }}" alt="{{ name }}"
+       style="max-width:220px;width:100%;border-radius:10px"></p>
+  {% endif %}
   {% if name %}<h2 style="margin-top:0">{{ name }}</h2>{% endif %}
   {% if role %}<p class="muted" style="margin-top:-.4rem">{{ role }}</p>{% endif %}
   {% if bio %}

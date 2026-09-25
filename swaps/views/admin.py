@@ -86,8 +86,48 @@ def dashboard():
                            officer_name=get_setting(db, "officer_name", ""),
                            officer_role=get_setting(db, "officer_role", ""),
                            officer_bio=get_setting(db, "officer_bio", ""),
+                           officer_photo=get_setting(db, "officer_photo", ""),
                            admin_auto_attend=get_setting(db, "admin_auto_attend", "0") == "1",
                            list_public=get_setting(db, "attendee_list_public") == "1")
+
+
+def _handle_officer_photo(db):
+    """Save/remove the officer profile photo. Downscaled to a square-ish max
+    and stored in PHOTOS_DIR, served via the existing /photos/<name> route."""
+    import os
+    import secrets
+    if request.form.get("remove_officer_photo"):
+        old = get_setting(db, "officer_photo", "")
+        if old:
+            try:
+                os.remove(os.path.join(config.PHOTOS_DIR, old))
+            except OSError:
+                pass
+        set_setting(db, "officer_photo", "")
+        return
+    file = request.files.get("officer_photo")
+    if not file or not file.filename:
+        return
+    from PIL import Image, ImageOps, UnidentifiedImageError
+    try:
+        img = Image.open(file.stream)
+        img = ImageOps.exif_transpose(img)
+    except (UnidentifiedImageError, OSError):
+        flash("Couldn't read that image — upload a normal JPEG/PNG.", "error")
+        return
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+    img.thumbnail((600, 600))
+    os.makedirs(config.PHOTOS_DIR, exist_ok=True)
+    old = get_setting(db, "officer_photo", "")
+    name = f"officer-{secrets.token_hex(4)}.jpg"
+    img.save(os.path.join(config.PHOTOS_DIR, name), "JPEG", quality=85, optimize=True)
+    set_setting(db, "officer_photo", name)
+    if old:
+        try:
+            os.remove(os.path.join(config.PHOTOS_DIR, old))
+        except OSError:
+            pass
 
 
 @bp.route("/settings", methods=["POST"])
@@ -119,6 +159,7 @@ def settings():
     set_setting(db, "officer_name", request.form.get("officer_name", "").strip()[:120])
     set_setting(db, "officer_role", request.form.get("officer_role", "").strip()[:120])
     set_setting(db, "officer_bio", request.form.get("officer_bio", "").strip()[:4000])
+    _handle_officer_photo(db)
     auto = "1" if request.form.get("admin_auto_attend") else "0"
     set_setting(db, "admin_auto_attend", auto)
     audit(db, "admin", "settings", f"term={term} window={t_open}..{t_close} "

@@ -405,7 +405,8 @@ def officer():
         "officer.html",
         name=get_setting(db, "officer_name", "") or get_setting(db, "admin_name", ""),
         role=get_setting(db, "officer_role", ""),
-        bio=get_setting(db, "officer_bio", ""))
+        bio=get_setting(db, "officer_bio", ""),
+        photo=get_setting(db, "officer_photo", ""))
 
 
 @bp.route("/privacy")

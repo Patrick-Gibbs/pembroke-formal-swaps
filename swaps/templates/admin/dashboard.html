@@ -50,7 +50,7 @@
 
 <div class="card">
   <h3>Settings</h3>
-  <form method="post" action="/admin/settings">
+  <form method="post" action="/admin/settings" enctype="multipart/form-data">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <label>Current term (shown to users; ballot &amp; allocation operate on this)</label>
     <input type="text" name="current_term" value="{{ term }}" placeholder="e.g. Michaelmas 2026">
@@ -82,6 +82,14 @@
     <input type="text" name="officer_role" value="{{ officer_role }}" placeholder="e.g. MCR Formal Swaps Officer">
     <label>Bio (shown on the public Swaps officer page; blank lines start new paragraphs)</label>
     <textarea name="officer_bio" rows="6" style="width:100%;max-width:34rem;padding:.5rem;border:1px solid #b8c4d0;border-radius:6px">{{ officer_bio }}</textarea>
+    <label>Profile photo (JPEG/PNG — auto-resized)</label>
+    {% if officer_photo %}
+    <p><img src="/photos/{{ officer_photo }}" alt="Current officer photo"
+         style="height:90px;border-radius:8px;vertical-align:middle">
+      <label style="display:inline;font-weight:normal;margin-left:.6rem">
+        <input type="checkbox" name="remove_officer_photo"> Remove photo</label></p>
+    {% endif %}
+    <input type="file" name="officer_photo" accept="image/*">
     <p><button>Save settings</button></p>
   </form>
 </div>
