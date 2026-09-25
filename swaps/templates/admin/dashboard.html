@@ -75,6 +75,13 @@
       formal (the member registered with the admin email above). Takes effect
       immediately — members see N−1 places while ranking, and I'm placed in every
       formal when the ballot runs.</label>
+    <h3>Swaps officer profile (public page)</h3>
+    <label>Officer name</label>
+    <input type="text" name="officer_name" value="{{ officer_name }}" placeholder="e.g. Patrick Gibbs">
+    <label>Role / title</label>
+    <input type="text" name="officer_role" value="{{ officer_role }}" placeholder="e.g. MCR Formal Swaps Officer">
+    <label>Bio (shown on the public Swaps officer page; blank lines start new paragraphs)</label>
+    <textarea name="officer_bio" rows="6" style="width:100%;max-width:34rem;padding:.5rem;border:1px solid #b8c4d0;border-radius:6px">{{ officer_bio }}</textarea>
     <p><button>Save settings</button></p>
   </form>
 </div>

@@ -83,6 +83,9 @@ def dashboard():
                            swap_cutoff=get_setting(db, "swap_cutoff_hours", "168"),
                            admin_email=get_setting(db, "admin_email", ""),
                            admin_name=get_setting(db, "admin_name", ""),
+                           officer_name=get_setting(db, "officer_name", ""),
+                           officer_role=get_setting(db, "officer_role", ""),
+                           officer_bio=get_setting(db, "officer_bio", ""),
                            admin_auto_attend=get_setting(db, "admin_auto_attend", "0") == "1",
                            list_public=get_setting(db, "attendee_list_public") == "1")
 
@@ -113,6 +116,9 @@ def settings():
     set_setting(db, "swap_cutoff_hours", str(swap_cut))
     set_setting(db, "admin_email", request.form.get("admin_email", "").strip()[:200])
     set_setting(db, "admin_name", request.form.get("admin_name", "").strip()[:120])
+    set_setting(db, "officer_name", request.form.get("officer_name", "").strip()[:120])
+    set_setting(db, "officer_role", request.form.get("officer_role", "").strip()[:120])
+    set_setting(db, "officer_bio", request.form.get("officer_bio", "").strip()[:4000])
     auto = "1" if request.form.get("admin_auto_attend") else "0"
     set_setting(db, "admin_auto_attend", auto)
     audit(db, "admin", "settings", f"term={term} window={t_open}..{t_close} "

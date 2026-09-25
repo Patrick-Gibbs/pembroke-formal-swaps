@@ -398,6 +398,16 @@ def app_icon(size):
                     headers={"Cache-Control": "public, max-age=86400"})
 
 
+@bp.route("/officer")
+def officer():
+    db = get_db()
+    return render_template(
+        "officer.html",
+        name=get_setting(db, "officer_name", "") or get_setting(db, "admin_name", ""),
+        role=get_setting(db, "officer_role", ""),
+        bio=get_setting(db, "officer_bio", ""))
+
+
 @bp.route("/privacy")
 def privacy():
     return render_template("privacy.html")

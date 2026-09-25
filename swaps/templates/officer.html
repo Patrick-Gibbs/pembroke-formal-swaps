@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Swaps officer — Pembroke Formal Swaps{% endblock %}
+{% block content %}
+<h1>Swaps officer</h1>
+<div class="card">
+  {% if name %}<h2 style="margin-top:0">{{ name }}</h2>{% endif %}
+  {% if role %}<p class="muted" style="margin-top:-.4rem">{{ role }}</p>{% endif %}
+  {% if bio %}
+    {% for para in bio.split('\n\n') %}
+      {% if para.strip() %}<p>{{ para.strip() }}</p>{% endif %}
+    {% endfor %}
+  {% else %}
+    <p class="muted">The swaps officer hasn't added a profile yet.</p>
+  {% endif %}
+  <p class="muted">Built by <a href="https://github.com/Patrick-Gibbs" rel="noopener" target="_blank">Patrick Gibbs (GitHub)</a>
+  &middot; <a href="https://bsky.app/profile/patrickgibbs.bsky.social" rel="noopener" target="_blank">Bluesky</a></p>
+</div>
+{% endblock %}
