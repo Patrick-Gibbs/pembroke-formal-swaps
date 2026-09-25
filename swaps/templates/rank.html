@@ -143,9 +143,10 @@ renumber();
 
 <div class="card">
   <h3>Simulate current outcomes</h3>
-  <p class="muted">Curious about your chances? Run the ballot 100 times against
+  <p class="muted">Curious about your chances? Run the ballot 400 times against
   everyone's preferences <b>as they stand right now</b>{% if not is_group_member %}
-  (save your ranking first){% endif %}.</p>
+  (save your ranking first){% endif %}. Bear in mind the odds of getting a
+  popular swap will decrease as more people sign up to the ballot.</p>
   <p><button type="button" class="btn" id="sim-btn" onclick="runSim()">🎲 Simulate current outcomes</button></p>
   <div id="sim-result"></div>
 
