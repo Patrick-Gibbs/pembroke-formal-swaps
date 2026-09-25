@@ -517,8 +517,19 @@ def swaps():
     outgoing = hydrate(db.execute(
         "SELECT * FROM swap_requests WHERE from_user=? AND status='pending' "
         "ORDER BY id DESC", (uid,)).fetchall())
+    from ..services import swap_cutoff_hours
     return render_template("swaps.html", published=published, mine=mine,
-                           incoming=incoming, outgoing=outgoing)
+                           incoming=incoming, outgoing=outgoing,
+                           swap_cutoff=_days_label(swap_cutoff_hours(db)))
+
+
+def _days_label(hours):
+    """Human label for a cut-off in hours: whole days as days, else hours."""
+    hours = int(hours)
+    if hours % 24 == 0:
+        d = hours // 24
+        return f"{d} day{'s' if d != 1 else ''}"
+    return f"{hours} hours"
 
 
 @bp.route("/swaps/holdings")
