@@ -117,7 +117,7 @@ def _handle_officer_photo(db):
         return
     if img.mode not in ("RGB", "L"):
         img = img.convert("RGB")
-    img.thumbnail((600, 600))
+    img.thumbnail((1200, 1200))
     os.makedirs(config.PHOTOS_DIR, exist_ok=True)
     old = get_setting(db, "officer_photo", "")
     name = f"officer-{secrets.token_hex(4)}.jpg"
