@@ -107,3 +107,22 @@ def test_round_and_capacity_invariants_random_instances():
             if u not in got:
                 assert all(remaining[f] == 0 for f in plist), \
                     "user left empty-handed despite a satisfiable preference"
+
+
+def test_rank_algorithm_page_worked_example():
+    """Pins the worked example on /rank/how-it-works (rank_algorithm.html).
+    If this fails, the allocation behaviour changed: update that page too."""
+    from swaps.allocation import run_ballot
+    formals = {"A": 2, "B": 1, "C": 3}
+    prefs = {"Ann": ["A", "B"], "Ben": ["A", "C"], "Cat": ["A", "B"],
+             "Dan": ["B", "C"], "Group": ["C", "A"]}
+    sizes, caps = {"Group": 2}, {"Dan": 1}
+    a, _ = run_ballot(formals, prefs, "pembroke", sizes, caps)
+    assert a == [("Ann", "A", 1), ("Ben", "A", 1), ("Dan", "B", 1),
+                 ("Group", "C", 1), ("Ben", "C", 2)]          # Cat left out
+    a, _ = run_ballot(formals, prefs, "formal", sizes, caps)
+    assert a == [("Ann", "A", 1), ("Cat", "A", 1), ("Dan", "B", 1),
+                 ("Group", "C", 1), ("Ben", "C", 1)]          # Ben falls to C
+    prefs["Cat"] = ["A", "B", "C"]                             # "the lesson"
+    a, _ = run_ballot(formals, prefs, "pembroke", sizes, caps)
+    assert ("Cat", "C", 1) in a and ("Ben", "C", 2) not in a

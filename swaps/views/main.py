@@ -105,6 +105,16 @@ def index():
                                        for f in formals})
 
 
+@bp.route("/rank/how-it-works")
+@login_required
+def rank_algorithm():
+    """Detailed explanation of the ballot, linked only from /rank. The worked
+    example's outcomes are pinned by tests/test_allocation.py so this page can't
+    drift from swaps/allocation.py."""
+    from .ballot import MAX_GROUP_SIZE
+    return render_template("rank_algorithm.html", max_group=MAX_GROUP_SIZE)
+
+
 @bp.route("/rank", methods=["GET", "POST"])
 @login_required
 def rank():
