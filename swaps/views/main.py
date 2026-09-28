@@ -98,6 +98,7 @@ def index():
                            ballot_closes=t_close, ballot_opens=t_open,
                            opens_soon=opens_soon,
                            cutoff_h=int(cancel_cutoff_hours(db)),
+                           charge_h=int(cancel_charge_hours(db)),
                            member_slots={f["id"]: f["slots"] - reserved.get(f["id"], 0)
                                          for f in formals},
                            free_seats={f["id"]: free_seats(db, f["id"], f["slots"])
