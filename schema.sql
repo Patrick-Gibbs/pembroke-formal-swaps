@@ -84,6 +84,15 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     UNIQUE(user_id, formal_id)
 );
 
+-- Record of silent auto-subscriptions made at publish, so a later publish never
+-- re-adds one a member has since unsubscribed from.
+CREATE TABLE IF NOT EXISTS auto_subscriptions (
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    formal_id INTEGER NOT NULL REFERENCES formals(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(user_id, formal_id)
+);
+
 CREATE TABLE IF NOT EXISTS login_attempts (
     id INTEGER PRIMARY KEY,
     kind TEXT NOT NULL,              -- 'user' | 'admin'

@@ -8,7 +8,8 @@ from .. import config
 from ..db import get_db, get_setting, set_setting, audit
 from ..security import (admin_required, client_ip, ip_blocked,
                         lockout_remaining, record_attempt, verify_secret)
-from ..services import (CancelError, ClaimError, cancel_allocation, claim_seat,
+from ..services import (CancelError, ClaimError, auto_subscribe_unmet,
+                        cancel_allocation, claim_seat,
                         free_seats, run_allocation, seat_admin, unseat_admin)
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -425,7 +426,8 @@ def formal_delete(fid):
         flash(f"Refusing to delete: {n} active allocation(s). Cancel them first "
               "or set status to cancelled.", "error")
         return redirect(url_for("admin.dashboard"))
-    for table in ("preferences", "subscriptions", "released_slots"):
+    for table in ("preferences", "subscriptions", "auto_subscriptions",
+                  "released_slots"):
         db.execute(f"DELETE FROM {table} WHERE formal_id=?", (fid,))  # noqa: S608 - fixed table names
     db.execute("DELETE FROM allocations WHERE formal_id=?", (fid,))
     db.execute("DELETE FROM formals WHERE id=?", (fid,))
@@ -647,12 +649,16 @@ def publish():
         db.execute("UPDATE allocations SET notified=1 WHERE id IN (%s)"
                    % ",".join("?" * len(alloc_ids)), alloc_ids)
     set_setting(db, "results_published", "1")
+    # Silently subscribe entrants to the formals they ranked but didn't get.
+    auto_subs = auto_subscribe_unmet(db, term)
     audit(db, "admin", "publish_results",
           f"term={term} winners={len(winners)} missed={len(missed)}")
     _deliver_results(winners, missed, term)
     flash(f"Published. Result emails queued: {len(winners)} winner(s)"
           + (f", {len(missed)} without a place" if missed else "")
-          + ". The assigned swaps page is now public.", "ok")
+          + ". The assigned swaps page is now public."
+          + (f" {auto_subs} silent notify-me subscription(s) added for ranked "
+             "formals people didn't get." if auto_subs else ""), "ok")
     return redirect(url_for("admin.dashboard"))
 
 

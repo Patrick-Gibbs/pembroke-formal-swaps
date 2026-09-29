@@ -257,6 +257,63 @@ def build_ballot_inputs(conn, term):
     return capacity, unit_prefs, unit_sizes, unit_caps, unit_members
 
 
+def auto_subscribe_unmet(conn, term):
+    """Silently subscribe every ballot entrant to each formal they ranked but
+    didn't get, so they're notified if a place opens (called on every publish;
+    each pair is only ever auto-added once — see auto_subscriptions).
+
+    - Group members use the group's (leader's) ranking — the one the ballot used.
+    - People already holding as many places this term as their max-swaps limit
+      (default 3) are skipped: they told us they don't want more.
+    - Only allocated formals; INSERT OR IGNORE keeps it idempotent.
+    Returns the number of new subscriptions."""
+    caps = {r["user_id"]: r["max_places"] for r in conn.execute(
+        "SELECT user_id, max_places FROM ballot_caps WHERE term=?", (term,))}
+    prefs = {}
+    for r in conn.execute(
+            "SELECT p.user_id, p.formal_id FROM preferences p "
+            "JOIN users u ON u.id=p.user_id AND u.email_verified=1 "
+            "WHERE p.term=? ORDER BY p.user_id, p.rank", (term,)):
+        prefs.setdefault(r["user_id"], []).append(r["formal_id"])
+    # Effective ranking per person: group members take the leader's list.
+    effective = {}
+    grouped = set()
+    for g in conn.execute("SELECT id, leader_user_id FROM ballot_groups WHERE term=?",
+                          (term,)).fetchall():
+        members = [m["user_id"] for m in conn.execute(
+            "SELECT m.user_id FROM ballot_group_members m JOIN users u "
+            "ON u.id=m.user_id AND u.email_verified=1 "
+            "WHERE m.group_id=? AND m.status='accepted'", (g["id"],))]
+        for m in members:
+            grouped.add(m)
+            effective[m] = prefs.get(g["leader_user_id"], [])
+    for uid, plist in prefs.items():
+        if uid not in grouped:
+            effective[uid] = plist
+
+    allocated = {r["id"] for r in conn.execute(
+        "SELECT id FROM formals WHERE term=? AND status='allocated'", (term,))}
+    added = 0
+    for uid, plist in effective.items():
+        held = {r["formal_id"] for r in conn.execute(
+            "SELECT a.formal_id FROM allocations a JOIN formals f ON f.id=a.formal_id "
+            "WHERE a.user_id=? AND a.status='active' AND f.term=?", (uid, term))}
+        if len(held) >= caps.get(uid, 3):
+            continue
+        for fid in plist:
+            if fid not in allocated or fid in held:
+                continue
+            # Each (member, formal) pair is auto-subscribed at most once ever,
+            # so re-publishing never undoes a member's unsubscribe.
+            if conn.execute("INSERT OR IGNORE INTO auto_subscriptions(user_id, "
+                            "formal_id) VALUES (?,?)", (uid, fid)).rowcount:
+                added += conn.execute(
+                    "INSERT OR IGNORE INTO subscriptions(user_id, formal_id) "
+                    "VALUES (?,?)", (uid, fid)).rowcount
+    audit(conn, "admin", "auto_subscribe", f"term={term} added={added}")
+    return added
+
+
 def unit_id_for_user(unit_members, user_id):
     for uid, members in unit_members.items():
         if user_id in members:
@@ -503,7 +560,7 @@ def delete_user_data(conn, user_id):
         conn.execute("DELETE FROM review_photos WHERE review_id IN "
                      "(SELECT id FROM reviews WHERE user_id=?)", (user_id,))
         for t in ("reviews", "preferences", "ballot_caps", "subscriptions",
-                  "allocations", "ballot_group_members"):
+                  "auto_subscriptions", "allocations", "ballot_group_members"):
             conn.execute(f"DELETE FROM {t} WHERE user_id=?", (user_id,))  # noqa: S608 fixed names
         # Disband any group this user leads (remove all its members, then the group).
         led = [r["id"] for r in conn.execute(
