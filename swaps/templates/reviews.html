@@ -99,6 +99,224 @@ loadCharts();
 setInterval(loadCharts, 20000);
 </script>
 
+<div class="card" id="exp-card" style="display:none;position:relative">
+  <h3>Did it live up to expectations?</h3>
+  <p class="muted" style="margin-top:-.3rem">Each college ranked twice: by how much
+  members <b>wanted</b> it in the ballot, and by how they <b>rated</b> it afterwards.
+  Only ballots that have already run are counted.</p>
+  <div class="exp-controls" role="radiogroup" aria-label="Measure expectation by">
+    <span class="muted">Measure expectation by:</span>
+    <label><input type="radio" name="expm" value="firsts" checked> 1st-choice votes per formal</label>
+    <label><input type="radio" name="expm" value="avg"> Average ballot rank</label>
+  </div>
+
+  <figure style="margin:.6rem 0 1.4rem">
+    <figcaption class="muted" style="margin-bottom:.3rem"><b>Expected vs reviewed rank</b>
+      — lines rising to the right beat expectations; falling lines fell short.</figcaption>
+    <div class="exp-legend muted">
+      <span><i style="background:#1f6fb2"></i>Beat expectations</span>
+      <span><i style="background:#c2570c"></i>Fell short</span>
+      <span><i style="background:#9aa5b1"></i>As expected</span>
+    </div>
+    <div style="overflow-x:auto"><svg id="chart-slope" style="width:100%;min-width:520px;font-family:Georgia,serif"></svg></div>
+    <p class="muted" id="slope-empty" style="display:none">Needs at least two colleges
+    with both ballot rankings and reviews — check back after a few more formals.</p>
+  </figure>
+
+  <div class="exp-two">
+    <figure style="margin:0">
+      <figcaption class="muted" style="margin-bottom:.3rem"><b>Most wanted: 1st-choice votes</b>
+        — per formal hosted, so colleges we visit more often aren't favoured.</figcaption>
+      <svg id="chart-firsts" style="width:100%;font-family:Georgia,serif"></svg>
+    </figure>
+    <figure style="margin:0">
+      <figcaption class="muted" style="margin-bottom:.3rem"><b>Average ballot rank</b>
+        — where members placed it on their list; <b>lower = more wanted</b>.</figcaption>
+      <svg id="chart-avg" style="width:100%;font-family:Georgia,serif"></svg>
+    </figure>
+  </div>
+
+  <details style="margin-top:1rem">
+    <summary style="cursor:pointer;color:#003b6f"><b>Table view</b></summary>
+    <div style="overflow-x:auto"><table id="exp-table"></table></div>
+  </details>
+  <div id="exp-tip" role="tooltip" class="exp-tip"></div>
+</div>
+<style>
+.exp-controls { display:flex; flex-wrap:wrap; gap:.4rem 1.1rem; align-items:center; font-size:.9rem; }
+.exp-controls label { display:inline; font-weight:normal; margin:0; }
+.exp-legend { display:flex; flex-wrap:wrap; gap:.3rem 1rem; margin:.2rem 0 .3rem; }
+.exp-legend i { display:inline-block; width:16px; height:2px; vertical-align:middle; margin-right:.35rem; }
+.exp-two { display:grid; grid-template-columns:1fr 1fr; gap:1.2rem; }
+@media (max-width:760px) { .exp-two { grid-template-columns:1fr; } }
+.exp-tip { position:absolute; pointer-events:none; display:none; background:#fff; border:1px solid #d5dde5;
+  border-radius:6px; padding:.4rem .6rem; font-size:.82rem; box-shadow:0 2px 8px rgba(0,0,0,.08);
+  max-width:17rem; z-index:5; }
+.exp-tip b { font-size:.95rem; }
+.exp-tip .k { display:inline-block; width:12px; height:2px; vertical-align:middle; margin-right:.3rem; }
+</style>
+<script>
+(function () {
+  const UP = '#1f6fb2', DOWN = '#c2570c', SAME = '#9aa5b1', BLUE = '#003b6f';
+  const INK = '#1c2430', MUT = '#5b6b7c', GRID = '#e3e8ee';
+  const tip = document.getElementById('exp-tip'), card = document.getElementById('exp-card');
+  let DATA = [];
+  function el(t, a) { const e = document.createElementNS('http://www.w3.org/2000/svg', t);
+    for (const k in a) e.setAttribute(k, a[k]); return e; }
+  function text(s, x, y, str, o = {}) {
+    const t = el('text', {x, y, fill: o.fill || INK, 'font-size': o.size || 12,
+      'text-anchor': o.anchor || 'start', 'font-weight': o.bold ? 'bold' : 'normal'});
+    t.textContent = str; s.appendChild(t); return t;
+  }
+  function clear(s) { while (s.firstChild) s.removeChild(s.firstChild); }
+  // Competition ranking (1,2,2,4) of items by key; better = smaller rank.
+  function rankBy(items, key, higherIsBetter) {
+    const sorted = items.slice().sort((a, b) => higherIsBetter ? key(b) - key(a) : key(a) - key(b));
+    const r = new Map();
+    sorted.forEach((it, i) => {
+      const prev = sorted[i - 1];
+      r.set(it.college, i > 0 && key(prev) === key(it) ? r.get(prev.college) : i + 1);
+    });
+    return {order: sorted, rank: r};
+  }
+  function measure() { return document.querySelector('input[name=expm]:checked').value; }
+  function expKey(m) { return m === 'firsts' ? (c => c.firsts_per_formal) : (c => c.avg_rank); }
+  function showTip(evt, rows) {
+    while (tip.firstChild) tip.removeChild(tip.firstChild);
+    rows.forEach(([cls, str, key]) => {
+      const d = document.createElement('div');
+      if (key) { const k = document.createElement('span'); k.className = 'k'; k.style.background = key; d.appendChild(k); }
+      const sp = document.createElement(cls === 'b' ? 'b' : 'span');
+      if (cls === 'm') sp.className = 'muted';
+      sp.textContent = str; d.appendChild(sp); tip.appendChild(d);
+    });
+    tip.style.display = 'block';
+    const box = card.getBoundingClientRect();
+    let x = evt.clientX - box.left + 14, y = evt.clientY - box.top + 14;
+    if (x + tip.offsetWidth > box.width - 8) x = evt.clientX - box.left - tip.offsetWidth - 14;
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  }
+  function hideTip() { tip.style.display = 'none'; }
+  const fmtRating = c => c.rating == null ? '—' : c.rating.toFixed(1) + '★ (' + c.reviews + ' review' + (c.reviews === 1 ? '' : 's') + ')';
+  const fmtExp = (m, c) => m === 'firsts'
+    ? num(c.firsts_per_formal) + ' 1st-choice votes per formal'
+    : 'average ballot rank ' + c.avg_rank.toFixed(2);
+  function ord(n) { return '#' + n; }
+  const num = v => (Math.round(v * 100) / 100).toString();  // 22 not 22.00, 2.25 stays
+
+  function drawSlope() {
+    const s = document.getElementById('chart-slope'); clear(s);
+    const m = measure(), key = expKey(m);
+    const both = DATA.filter(c => key(c) != null && c.rating != null);
+    const empty = document.getElementById('slope-empty');
+    if (both.length < 2) { s.style.display = 'none'; empty.style.display = ''; return; }
+    s.style.display = ''; empty.style.display = 'none';
+    const E = rankBy(both, key, m === 'firsts'), R = rankBy(both, c => c.rating, true);
+    const row = 30, T = 44, W = 760, H = T + row * both.length + 10;
+    s.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    const XL = 290, XR = 470;
+    text(s, XL, 18, 'Expected (ballot)', {anchor: 'end', fill: MUT, bold: true});
+    text(s, XR, 18, 'Reviewed', {fill: MUT, bold: true});
+    const yL = new Map(), yR = new Map();
+    E.order.forEach((c, i) => yL.set(c.college, T + i * row));
+    R.order.forEach((c, i) => yR.set(c.college, T + i * row));
+    const groups = [];
+    both.forEach(c => {
+      const er = E.rank.get(c.college), rr = R.rank.get(c.college);
+      const col = rr < er ? UP : rr > er ? DOWN : SAME;
+      const verdict = rr < er ? 'Beat expectations' : rr > er ? 'Fell short' : 'As expected';
+      const g = el('g', {tabindex: 0, 'aria-label': `${c.college}: expected ${ord(er)}, reviewed ${ord(rr)} — ${verdict}`});
+      const y1 = yL.get(c.college), y2 = yR.get(c.college);
+      g.appendChild(el('line', {x1: XL + 10, y1, x2: XR - 10, y2, stroke: col, 'stroke-width': 2}));
+      for (const [x, y] of [[XL + 10, y1], [XR - 10, y2]])
+        g.appendChild(el('circle', {cx: x, cy: y, r: 5, fill: col, stroke: '#fff', 'stroke-width': 2}));
+      text(g, XL - 2, y1 + 4, `${c.college}  ${ord(er)}`, {anchor: 'end'});
+      text(g, XR + 2, y2 + 4, `${ord(rr)}  ${c.college}`);
+      // generous invisible hit area along the line
+      g.appendChild(el('line', {x1: XL + 10, y1, x2: XR - 10, y2, stroke: 'transparent', 'stroke-width': 18}));
+      const rows = [['b', c.college], ['', verdict, col],
+        ['m', `Expected ${ord(er)} of ${both.length} — ${fmtExp(m, c)}`],
+        ['m', `Reviewed ${ord(rr)} of ${both.length} — ${fmtRating(c)}`]];
+      const on = e => { groups.forEach(o => o.style.opacity = o === g ? 1 : .22); showTip(e, rows); };
+      const off = () => { groups.forEach(o => o.style.opacity = 1); hideTip(); };
+      g.addEventListener('pointermove', on); g.addEventListener('pointerleave', off);
+      g.addEventListener('focus', () => { const b = g.getBoundingClientRect();
+        on({clientX: b.left + b.width / 2, clientY: b.top + b.height / 2}); });
+      g.addEventListener('blur', off);
+      groups.push(g); s.appendChild(g);
+    });
+  }
+
+  function drawBars(id, items, val, fmt, higherIsBetter, maxV) {
+    const s = document.getElementById(id); clear(s);
+    const d = items.filter(c => val(c) != null)
+      .sort((a, b) => higherIsBetter ? val(b) - val(a) : val(a) - val(b));
+    const row = 26, T = 6, W = 380, LBL = 130, H = T + row * Math.max(1, d.length) + 6;
+    s.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    if (!d.length) { text(s, 10, 22, 'No completed ballots yet', {fill: MUT}); return; }
+    const max = maxV || Math.max(...d.map(val)) || 1, PW = W - LBL - 46;
+    s.appendChild(el('line', {x1: LBL, y1: T, x2: LBL, y2: T + row * d.length, stroke: GRID}));
+    d.forEach((c, i) => {
+      const y = T + i * row, w = Math.max(2, (val(c) / max) * PW);
+      const g = el('g', {tabindex: 0, 'aria-label': `${c.college}: ${fmt(c)}`});
+      text(g, LBL - 8, y + 17, c.college, {anchor: 'end', fill: MUT});
+      g.appendChild(el('rect', {x: LBL, y: y + 5, width: w, height: 16, rx: 4, fill: BLUE}));
+      text(g, LBL + w + 6, y + 17, fmt(c).split(' ')[0]);
+      g.appendChild(el('rect', {x: 0, y, width: W, height: row, fill: 'transparent'}));
+      const rows = [['b', fmt(c)], ['m', c.college],
+        ['m', `${c.rankings} ranking${c.rankings === 1 ? '' : 's'} across ${c.formals} formal${c.formals === 1 ? '' : 's'}`]];
+      g.addEventListener('pointermove', e => { g.style.opacity = .8; showTip(e, rows); });
+      g.addEventListener('pointerleave', () => { g.style.opacity = 1; hideTip(); });
+      g.addEventListener('focus', () => { const b = g.getBoundingClientRect();
+        showTip({clientX: b.left + b.width / 2, clientY: b.top}, rows); });
+      g.addEventListener('blur', hideTip);
+      s.appendChild(g);
+    });
+  }
+
+  function drawTable() {
+    const t = document.getElementById('exp-table'); t.textContent = '';
+    const m = measure(), key = expKey(m);
+    const both = DATA.filter(c => key(c) != null && c.rating != null);
+    const E = rankBy(both, key, m === 'firsts'), R = rankBy(both, c => c.rating, true);
+    const head = ['College', '1st-choice votes', 'Per formal', 'Avg ballot rank', 'Times ranked',
+                  'Expected rank', 'Rating', 'Reviewed rank', 'Verdict'];
+    const tr = document.createElement('tr');
+    head.forEach(h => { const th = document.createElement('th'); th.textContent = h; tr.appendChild(th); });
+    t.appendChild(tr);
+    DATA.slice().sort((a, b) => a.college.localeCompare(b.college)).forEach(c => {
+      const er = E.rank.get(c.college), rr = R.rank.get(c.college);
+      const v = er == null ? '—' : rr < er ? 'Beat expectations' : rr > er ? 'Fell short' : 'As expected';
+      const cells = [c.college, c.firsts, c.firsts_per_formal ?? '—', c.avg_rank ?? '—', c.rankings,
+        er ?? '—', c.rating == null ? '—' : c.rating.toFixed(1) + ' (' + c.reviews + ')', rr ?? '—', v];
+      const row = document.createElement('tr');
+      cells.forEach(x => { const td = document.createElement('td'); td.textContent = x; row.appendChild(td); });
+      t.appendChild(row);
+    });
+  }
+
+  function render() {
+    drawSlope();
+    drawBars('chart-firsts', DATA, c => c.firsts_per_formal,
+      c => `${num(c.firsts_per_formal)} per formal (${c.firsts} total)`, true);
+    drawBars('chart-avg', DATA, c => c.avg_rank,
+      c => `${c.avg_rank.toFixed(2)} average rank`, false);
+    drawTable();
+  }
+  document.querySelectorAll('input[name=expm]').forEach(r => r.addEventListener('change', render));
+  async function load() {
+    try {
+      const d = await (await fetch('/reviews/expectations.json')).json();
+      DATA = d.filter(c => c.rankings > 0 || c.rating != null);
+      card.style.display = DATA.some(c => c.rankings > 0) ? '' : 'none';
+      render();
+    } catch (e) { /* keep last render */ }
+  }
+  load();
+  setInterval(load, 20000);
+})();
+</script>
+
 {% if stats %}
 <div class="card">
   <h3>College ratings</h3>

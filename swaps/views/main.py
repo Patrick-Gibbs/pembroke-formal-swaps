@@ -795,6 +795,44 @@ def _college_stats(db):
     return out
 
 
+def _expectation_stats(db):
+    """Per-college 'expectation' (how members ranked it in the ballot) next to
+    its review rating. Only formals whose ballot has run (status 'allocated')
+    count, so live demand is never revealed while a ballot is open."""
+    formals_per = {r["college"]: r["n"] for r in db.execute(
+        "SELECT host_college AS college, COUNT(*) AS n FROM formals "
+        "WHERE status='allocated' GROUP BY host_college")}
+    ranks = {}
+    for r in db.execute(
+            "SELECT f.host_college AS college, p.rank FROM preferences p "
+            "JOIN formals f ON f.id=p.formal_id WHERE f.status='allocated'"):
+        ranks.setdefault(r["college"], []).append(r["rank"])
+    reviews = {s["college"]: s for s in _college_stats(db)}
+    out = []
+    for college in sorted(set(ranks) | set(reviews)):
+        rk = ranks.get(college, [])
+        firsts = sum(1 for x in rk if x == 1)
+        nf = formals_per.get(college, 0)
+        rv = reviews.get(college)
+        out.append({
+            "college": college,
+            "formals": nf,
+            "rankings": len(rk),
+            "firsts": firsts,
+            "firsts_per_formal": round(firsts / nf, 2) if nf and rk else None,
+            "avg_rank": round(statistics.mean(rk), 2) if rk else None,
+            "rating": rv["mean"] if rv else None,
+            "reviews": rv["n"] if rv else 0,
+        })
+    return out
+
+
+@bp.route("/reviews/expectations.json")
+def reviews_expectations():
+    from flask import jsonify
+    return jsonify(_expectation_stats(get_db()))
+
+
 @bp.route("/reviews")
 def reviews_page():
     db = get_db()
