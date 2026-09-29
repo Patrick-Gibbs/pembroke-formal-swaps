@@ -48,6 +48,7 @@ def create_app():
             "is_admin": bool(session.get("is_admin")),
             "current_term": get_setting(get_db(), "current_term"),
             "chatbot_enabled": chatbot.is_available(),
+            "social_links": config.SOCIAL_LINKS,
         }
 
     return app

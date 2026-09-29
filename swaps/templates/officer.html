@@ -16,7 +16,7 @@
   {% else %}
     <p class="muted">The swaps officer hasn't added a profile yet.</p>
   {% endif %}
-  <p class="muted">Built by <a href="https://github.com/Patrick-Gibbs" rel="noopener" target="_blank">Patrick Gibbs (GitHub)</a>
-  &middot; <a href="https://bsky.app/profile/patrickgibbs.bsky.social" rel="noopener" target="_blank">Bluesky</a></p>
+  <p class="muted">Find me on
+  {% for label, url in social_links %}<a href="{{ url }}" rel="noopener" target="_blank">{{ label }}</a>{% if not loop.last %} &middot; {% endif %}{% endfor %}</p>
 </div>
 {% endblock %}

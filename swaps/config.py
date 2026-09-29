@@ -38,6 +38,15 @@ TRUST_PROXY = os.environ.get("TRUST_PROXY", "1") == "1"
 # Set 0 only for plain-HTTP local testing; must be 1 in production.
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "1") == "1"
 
+# Patrick's links — the single source for the site footer AND the Swaps officer
+# page (both loop over this), so they always stay in sync.
+SOCIAL_LINKS = [
+    ("GitHub", "https://github.com/Patrick-Gibbs"),
+    ("Bluesky", "https://bsky.app/profile/patrickgibbs.bsky.social"),
+    ("LinkedIn", "https://www.linkedin.com/in/patrick-gibbs-7b4a1b233/"),
+    ("Instagram", "https://www.instagram.com/paddygibbs_/"),
+]
+
 CANCEL_CUTOFF_HOURS = 12   # fallback; live value is the cancel_cutoff_hours setting
 CANCEL_CHARGE_HOURS = 72   # cancelling within this window charges the member
 VERIFY_TOKEN_MAX_AGE = 24 * 3600
