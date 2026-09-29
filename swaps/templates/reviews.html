@@ -99,11 +99,15 @@ loadCharts();
 setInterval(loadCharts, 20000);
 </script>
 
-<div class="card" id="exp-card" style="display:none;position:relative">
+<div class="card" id="exp-card" style="position:relative">
   <h3>Did it live up to expectations?</h3>
   <p class="muted" style="margin-top:-.3rem">Each college ranked twice: by how much
   members <b>wanted</b> it in the ballot, and by how they <b>rated</b> it afterwards.
   Only ballots that have already run are counted.</p>
+  <p class="note" id="exp-empty" style="display:none">These charts fill in once a ballot
+  has run — rankings for the current ballot stay private until then, so nobody can see
+  which formals are in demand while it's open.</p>
+  <div id="exp-body">
   <div class="exp-controls" role="radiogroup" aria-label="Measure expectation by">
     <span class="muted">Measure expectation by:</span>
     <label><input type="radio" name="expm" value="firsts" checked> 1st-choice votes per formal</label>
@@ -141,6 +145,7 @@ setInterval(loadCharts, 20000);
     <summary style="cursor:pointer;color:#003b6f"><b>Table view</b></summary>
     <div style="overflow-x:auto"><table id="exp-table"></table></div>
   </details>
+  </div>
   <div id="exp-tip" role="tooltip" class="exp-tip"></div>
 </div>
 <style>
@@ -330,8 +335,10 @@ setInterval(loadCharts, 20000);
     try {
       const d = await (await fetch('/reviews/expectations.json')).json();
       DATA = d.filter(c => c.rankings > 0 || c.rating != null);
-      card.style.display = DATA.some(c => c.rankings > 0) ? '' : 'none';
-      render();
+      const has = DATA.some(c => c.rankings > 0);
+      document.getElementById('exp-body').style.display = has ? '' : 'none';
+      document.getElementById('exp-empty').style.display = has ? 'none' : '';
+      if (has) render();
     } catch (e) { /* keep last render */ }
   }
   load();
