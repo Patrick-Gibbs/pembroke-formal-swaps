@@ -23,10 +23,13 @@
   beats you by a second you'll see a message rather than a double booking.</p>
   {% else %}
   <p>No free places at the moment.
+  {% if can_subscribe %}
   <form class="inline" method="post" action="/formals/{{ formal['id'] }}/subscribe">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <button class="ghost">Email me if one opens</button>
-  </form></p>
+  </form>
+  {% else %}<span class="muted">You can ask to be notified once the ballot has run
+  and results are out.</span>{% endif %}</p>
   {% endif %}
 </div>
 {% endblock %}

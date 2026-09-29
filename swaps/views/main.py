@@ -99,6 +99,7 @@ def index():
                            opens_soon=opens_soon,
                            cutoff_h=int(cancel_cutoff_hours(db)),
                            charge_h=int(cancel_charge_hours(db)),
+                           results_out=_swaps_published(db),
                            member_slots={f["id"]: f["slots"] - reserved.get(f["id"], 0)
                                          for f in formals},
                            free_seats={f["id"]: free_seats(db, f["id"], f["slots"])
@@ -495,6 +496,12 @@ def _swaps_published(db):
     return get_setting(db, "results_published", "1") == "1"
 
 
+def can_subscribe(db, f):
+    """'Notify me' only makes sense once the ballot has run for this formal
+    (status 'allocated') and the results are published."""
+    return f["status"] == "allocated" and _swaps_published(db)
+
+
 @bp.route("/swaps")
 @login_required
 def swaps():
@@ -695,6 +702,7 @@ def claim(formal_id):
             inherit_preview = {"replaced": row["orig_name"], "dietary": row["orig_dietary"]}
     return render_template("claim.html", formal=f, priority=priority,
                            inherit_preview=inherit_preview,
+                           can_subscribe=can_subscribe(db, f),
                            free=free_seats(db, formal_id, f["slots"], priority=priority))
 
 
@@ -848,8 +856,13 @@ def photo(name):
 @login_required
 def subscribe(formal_id):
     db = get_db()
-    if db.execute("SELECT 1 FROM formals WHERE id=?", (formal_id,)).fetchone() is None:
+    f = db.execute("SELECT * FROM formals WHERE id=?", (formal_id,)).fetchone()
+    if f is None:
         abort(404)
+    if not can_subscribe(db, f):
+        flash("You can ask to be notified once the ballot has run and the results "
+              "are out.", "error")
+        return redirect(request.referrer or url_for("main.index"))
     db.execute("INSERT OR IGNORE INTO subscriptions(user_id, formal_id) VALUES (?,?)",
                (current_user()["id"], formal_id))
     flash("Subscribed — we'll email you if a place opens up.", "ok")
