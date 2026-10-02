@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/admin/">← Admin</a></p>
+<h1>Ballot groups — {{ term or 'no term set' }}</h1>
+<p class="muted">{{ groups|length }} group{{ '' if groups|length == 1 else 's' }},
+{{ groups|sum(attribute='size') }} member{{ '' if groups|sum(attribute='size') == 1 else 's' }} in total.
+Each group ballots as one block on its <b>leader's</b> ranking and limit.</p>
+{% for g in groups %}
+<div class="card">
+  <h3 style="margin:.1rem 0 .4rem">{{ g['party_name'] or 'Group #' ~ g['id'] }}
+    <span class="muted" style="font-weight:normal">— led by {{ g['leader'] }} ·
+    {{ g['size'] }} accepted{% if g['pending'] %}, {{ g['pending'] }} invite{{ '' if g['pending'] == 1 else 's' }} pending{% endif %}</span></h3>
+  <table>
+    <tr><th>Member</th><th>Status</th></tr>
+    {% for m in g['members'] %}
+    <tr><td>{{ m['first_name'] }} {{ m['last_name'] }}{% if m['is_leader'] %} <b>(leader)</b>{% endif %}</td>
+        <td>{{ m['status'] }}</td></tr>
+    {% endfor %}
+  </table>
+  <p><b>Ranking:</b>
+    {% if g['ranking'] %}{% for c in g['ranking'] %}{{ loop.index }}. {{ c }}{% if not loop.last %} · {% endif %}{% endfor %}
+    {% else %}<span class="muted">the leader hasn't ranked yet — this group isn't in the ballot</span>{% endif %}
+    <span class="muted">· max {{ g['cap'] }} formal{{ '' if g['cap'] == 1 else 's' }}</span></p>
+</div>
+{% else %}
+<p>No ballot groups for this term yet.</p>
+{% endfor %}
+{% endblock %}

@@ -1017,3 +1017,90 @@ def audit_view():
     db = get_db()
     rows = db.execute("SELECT * FROM audit_log ORDER BY id DESC LIMIT 500").fetchall()
     return render_template("admin/audit.html", rows=rows)
+
+
+# ---------------------------------------------------------------- ballot tools
+
+def _deadline_label(close_str):
+    """'2026-10-09 18:00' -> 'Friday 9 October at 18:00' ('' if unset/bad)."""
+    from ..services import parse_local
+    try:
+        d = parse_local(close_str)
+    except (TypeError, ValueError):
+        return ""
+    return f"{d.strftime('%A')} {d.day} {d.strftime('%B')} at {d.strftime('%H:%M')}"
+
+
+@bp.route("/remind-unranked", methods=["GET", "POST"])
+@admin_required
+def remind_unranked():
+    """Email every member who hasn't ranked yet for the current term, asking
+    them to do so before the ballot closes."""
+    from ..services import local_now, parse_local, unranked_members
+    db = get_db()
+    term = get_setting(db, "current_term")
+    close = get_setting(db, "term_ballot_close")
+    deadline = _deadline_label(close)
+    try:
+        closed = bool(close) and parse_local(close) <= local_now()
+    except ValueError:
+        closed = False
+    people = unranked_members(db, term) if term else []
+    if request.method == "POST":
+        if not term or not deadline or closed:
+            flash("Set a future ballot close date in Settings before sending reminders.",
+                  "error")
+            return redirect(url_for("admin.remind_unranked"))
+        if not people:
+            flash("Everyone has already ranked — nobody to remind.", "ok")
+            return redirect(url_for("admin.remind_unranked"))
+        import threading
+        import time
+
+        from .. import emailer
+        batch = [(p["email"], p["first_name"]) for p in people]
+
+        def deliver():
+            for email, first in batch:
+                emailer.rank_reminder_email(email, first, term, deadline)
+                time.sleep(0.6)   # stay well inside the email service's rate limit
+
+        threading.Thread(target=deliver, daemon=True).start()
+        from ..services import utcnow_str
+        set_setting(db, "rank_reminder_last", f"{utcnow_str()} UTC — {len(batch)} sent")
+        audit(db, "admin", "rank_reminder", f"term={term} recipients={len(batch)}")
+        flash(f"Reminder emails queued to {len(batch)} member(s). They'll go out over "
+              f"the next minute or so — check the Email log for delivery.", "ok")
+        return redirect(url_for("admin.remind_unranked"))
+    return render_template("admin/remind_unranked.html", term=term, people=people,
+                           deadline=deadline, closed=closed,
+                           last=get_setting(db, "rank_reminder_last", ""))
+
+
+@bp.route("/groups")
+@admin_required
+def groups():
+    from ..services import ballot_groups_overview
+    db = get_db()
+    term = get_setting(db, "current_term")
+    return render_template("admin/groups.html", term=term,
+                           groups=ballot_groups_overview(db, term) if term else [])
+
+
+@bp.route("/simulate")
+@admin_required
+def simulate_admin():
+    """Run the whole ballot many times on the rankings as they stand (no
+    writes) and show expected outcomes per formal and per entrant."""
+    from ..services import simulate_ballot
+    from .main import _SIM_SEMAPHORE
+    db = get_db()
+    term = get_setting(db, "current_term")
+    if not _SIM_SEMAPHORE.acquire(blocking=False):
+        flash("A simulation is already running — try again in a few seconds.", "error")
+        return redirect(url_for("admin.dashboard"))
+    try:
+        sim = simulate_ballot(db, term) if term else None
+    finally:
+        _SIM_SEMAPHORE.release()
+    return render_template("admin/simulate.html", term=term, sim=sim)

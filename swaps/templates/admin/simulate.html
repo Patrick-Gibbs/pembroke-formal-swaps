@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/admin/">← Admin</a></p>
+<h1>Simulate the ballot — {{ term or 'no term set' }}</h1>
+{% if not sim %}
+<p>Nobody has ranked any formals for this term yet, so there's nothing to simulate.</p>
+{% else %}
+<p class="muted">The real allocation algorithm run <b>{{ sim['trials'] }}</b> times on the
+rankings as they stand right now. Nothing is saved and nobody is emailed. Figures
+are averages across runs; they'll shift as more people rank.
+<a href="/admin/simulate">Re-run</a></p>
+
+<div class="sim-tiles">
+  <div class="card"><div class="muted">Entrants</div><div class="big">{{ sim['entrants'] }}</div>
+    <div class="muted">{{ sim['units'] }} ballot entr{{ 'y' if sim['units'] == 1 else 'ies' }}, {{ sim['groups'] }} group{{ '' if sim['groups'] == 1 else 's' }}</div></div>
+  <div class="card"><div class="muted">Expected to get ≥ 1 place</div><div class="big">{{ sim['pct_placed'] }}%</div>
+    <div class="muted">≈ {{ sim['mean_placed'] }} people</div></div>
+  <div class="card"><div class="muted">Expected to miss out</div><div class="big">{{ sim['mean_missed'] }}</div>
+    <div class="muted">people with no place</div></div>
+  <div class="card"><div class="muted">Places filled</div><div class="big">{{ sim['mean_places_awarded'] }}</div>
+    <div class="muted">of {{ sim['seats'] }} free seats</div></div>
+</div>
+
+<h2>By formal</h2>
+<p class="muted">Sorted by pressure: 1st-choice demand ÷ free seats (above 1 = more people
+want it most than it can seat).</p>
+<div style="overflow-x:auto"><table>
+  <tr><th>Formal</th><th>Free seats</th><th>1st-choice demand</th><th>Pressure</th>
+      <th>Ranked by</th><th>Avg filled</th><th>Full in</th></tr>
+  {% for f in sim['per_formal'] %}
+  <tr><td>{{ f['college'] }} <span class="muted">{{ f['dt'] }}</span></td>
+      <td>{{ f['seats'] }}</td><td>{{ f['first_demand'] }}</td>
+      <td>{% if f['pressure'] is none %}—{% else %}<b>{{ '%.2f'|format(f['pressure']) }}×</b>{% endif %}</td>
+      <td>{{ f['rankers'] }}</td><td>{{ f['mean_filled'] }}</td>
+      <td>{% if f['pct_full'] is none %}—{% else %}{{ f['pct_full'] }}% of runs{% endif %}</td></tr>
+  {% endfor %}
+</table></div>
+
+<h2>By entrant</h2>
+<p class="muted">Least likely to get a place first. Groups are one row (every member gets the
+same outcome).</p>
+<div style="overflow-x:auto"><table>
+  <tr><th>Who</th><th>1st choice</th><th>Gets 1st choice</th><th>Gets any place</th>
+      <th>Expected places</th><th>Ranked</th><th>Limit</th></tr>
+  {% for u in sim['per_unit'] %}
+  <tr><td>{{ u['who'] }}{% if u['group'] %} <span class="muted">({{ u['size'] }})</span>{% endif %}</td>
+      <td>{{ u['first_choice'] }}</td><td>{{ u['pct_first'] }}%</td>
+      <td>{% if u['pct_any'] < 50 %}<b>{{ u['pct_any'] }}%</b>{% else %}{{ u['pct_any'] }}%{% endif %}</td>
+      <td>{{ u['exp_places'] }}</td><td>{{ u['ranked'] }}</td><td>{{ u['cap'] }}</td></tr>
+  {% endfor %}
+</table></div>
+{% endif %}
+<style>
+.sim-tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(11rem,1fr)); gap:.8rem; }
+.sim-tiles .card { margin:0; }
+.sim-tiles .big { font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:2rem; font-weight:600; color:#003b6f; margin:.15rem 0; }
+</style>
+{% endblock %}

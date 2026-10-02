@@ -2,6 +2,7 @@
 import base64
 import logging
 import re
+import time
 
 import requests
 
@@ -63,11 +64,15 @@ def send(to, subject, html, attachments=None, cc=None):
             {"filename": name, "content": base64.b64encode(data).decode()}
             for name, data in attachments]
     try:
-        r = requests.post(
-            RESEND_URL, json=payload,
-            headers={"Authorization": f"Bearer {config.RESEND_API_KEY}"},
-            timeout=10,
-        )
+        for attempt in range(4):
+            r = requests.post(
+                RESEND_URL, json=payload,
+                headers={"Authorization": f"Bearer {config.RESEND_API_KEY}"},
+                timeout=10,
+            )
+            if r.status_code != 429 or attempt == 3:
+                break
+            time.sleep(1 + attempt)   # rate-limited: back off and retry
         if r.status_code // 100 != 2:
             log.error("Resend error %s for %s: %s", r.status_code, rec, r.text[:500])
             _record(rec, subject, False, f"HTTP {r.status_code}: {r.text[:300]}")
@@ -147,6 +152,18 @@ TEMPLATES = {
                 "at <a href=\"{site}\">{site}</a> and you'll get an email the moment a "
                 "place is released — first come, first served.</p>",
     },
+    "rank_reminder": {
+        "label": "Reminder to rank before the ballot closes (admin-sent)",
+        "placeholders": ["first_name", "term", "deadline", "link"],
+        "subject": "Reminder: rank your formals before {deadline}",
+        "body": "<p>Hi {first_name},</p>"
+                "<p>The formal swap ballot for {term} closes on <b>{deadline}</b>, and "
+                "you haven't ranked any formals yet.</p>"
+                "<p><a href=\"{link}\">Rank your formals now</a> — it only takes a "
+                "minute. Rank only the ones you'd like to go to, most wanted first.</p>"
+                "<p>Going with friends? Set up a ballot group so you win or lose "
+                "together.</p>",
+    },
 }
 
 
@@ -225,6 +242,13 @@ def allocation_result_email(to, formals, ics_files):
         f"<p>Manage your places (or cancel, up until the cut-off) at "
         f"<a href=\"{config.SITE_URL}/me\">{config.SITE_URL}/me</a>.</p>",
         attachments=ics_files)
+
+
+def rank_reminder_email(to, first_name, term, deadline):
+    subject, body = _render_template("rank_reminder", {
+        "first_name": first_name, "term": term, "deadline": deadline,
+        "link": f"{config.SITE_URL}/rank"})
+    return send(to, subject, body)
 
 
 def no_place_email(to, term):

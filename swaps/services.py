@@ -314,6 +314,151 @@ def auto_subscribe_unmet(conn, term):
     return added
 
 
+def unranked_members(conn, term):
+    """Verified members who haven't ranked any formal for `term` — the people a
+    'please rank' reminder should go to. Excluded: accepted non-leader group
+    members (their leader's ranking covers them) and the swaps officer
+    (admin_email), who is seated automatically."""
+    admin_email = get_setting(conn, "admin_email", "").strip().lower()
+    return conn.execute(
+        "SELECT u.id, u.first_name, u.last_name, u.email FROM users u "
+        "WHERE u.email_verified=1 AND lower(u.email) != ? "
+        "AND u.id NOT IN (SELECT user_id FROM preferences WHERE term=?) "
+        "AND u.id NOT IN (SELECT m.user_id FROM ballot_group_members m "
+        "  JOIN ballot_groups g ON g.id=m.group_id WHERE g.term=? "
+        "  AND m.status='accepted' AND m.user_id != g.leader_user_id) "
+        "ORDER BY u.last_name, u.first_name", (admin_email, term, term)).fetchall()
+
+
+def ballot_groups_overview(conn, term):
+    """Every ballot group for `term`: leader, party name, members (with invite
+    status), the leader's ranking (which the whole group ballots on) and the
+    leader's max-places limit."""
+    college = {r["id"]: r["host_college"] for r in conn.execute(
+        "SELECT id, host_college FROM formals")}
+    out = []
+    for g in conn.execute(
+            "SELECT g.id, g.party_name, g.created_at, g.leader_user_id, "
+            "u.first_name, u.last_name FROM ballot_groups g "
+            "JOIN users u ON u.id=g.leader_user_id WHERE g.term=? ORDER BY g.id",
+            (term,)).fetchall():
+        members = conn.execute(
+            "SELECT u.first_name, u.last_name, m.status, "
+            "(m.user_id = ?) AS is_leader FROM ballot_group_members m "
+            "JOIN users u ON u.id=m.user_id WHERE m.group_id=? "
+            "ORDER BY is_leader DESC, m.status, u.last_name",
+            (g["leader_user_id"], g["id"])).fetchall()
+        ranking = [college.get(r["formal_id"], "?") for r in conn.execute(
+            "SELECT formal_id FROM preferences WHERE user_id=? AND term=? ORDER BY rank",
+            (g["leader_user_id"], term))]
+        cap = conn.execute("SELECT max_places FROM ballot_caps WHERE user_id=? AND term=?",
+                           (g["leader_user_id"], term)).fetchone()
+        out.append({
+            "id": g["id"], "party_name": g["party_name"], "created_at": g["created_at"],
+            "leader": f"{g['first_name']} {g['last_name']}",
+            "members": [dict(m) for m in members],
+            "size": sum(1 for m in members if m["status"] == "accepted"),
+            "pending": sum(1 for m in members if m["status"] == "invited"),
+            "ranking": ranking, "cap": cap["max_places"] if cap else 3,
+        })
+    return out
+
+
+def simulate_ballot(conn, term, trials=400):
+    """Whole-ballot preview for the admin: run the real ballot `trials` times on
+    the current rankings (read-only) and aggregate per formal and per entrant.
+    Returns None when nobody has entered yet."""
+    capacity, unit_prefs, unit_sizes, unit_caps, unit_members = \
+        build_ballot_inputs(conn, term)
+    if not unit_prefs:
+        return None
+    formal_rows = {r["id"]: r for r in conn.execute(
+        "SELECT id, host_college, dt, slots FROM formals WHERE term=?", (term,))}
+    names = {r["id"]: f"{r['first_name']} {r['last_name']}" for r in conn.execute(
+        "SELECT id, first_name, last_name FROM users")}
+    parties = {f"g:{r['id']}": r["party_name"] for r in conn.execute(
+        "SELECT id, party_name FROM ballot_groups WHERE term=?", (term,))}
+
+    def size(u):
+        return unit_sizes.get(u, 1)
+
+    fids = sorted(capacity)
+    filled = dict.fromkeys(fids, 0)
+    full = dict.fromkeys(fids, 0)
+    first_hits = dict.fromkeys(unit_prefs, 0)
+    any_hits = dict.fromkeys(unit_prefs, 0)
+    places = dict.fromkeys(unit_prefs, 0)
+    people_placed = 0
+    for i in range(trials):
+        assignments, _ = run_ballot(capacity, unit_prefs, f"sim-{i}", unit_sizes,
+                                    unit_caps)
+        won, taken = {}, dict.fromkeys(fids, 0)
+        for u, f, _rnd in assignments:
+            won.setdefault(u, set()).add(f)
+            taken[f] += size(u)
+        for f in fids:
+            filled[f] += taken[f]
+            if capacity[f] > 0 and taken[f] >= capacity[f]:
+                full[f] += 1
+        for u, plist in unit_prefs.items():
+            w = won.get(u, set())
+            if w:
+                any_hits[u] += 1
+                people_placed += size(u)
+            if plist[0] in w:
+                first_hits[u] += 1
+            places[u] += len(w)
+
+    entrants = sum(size(u) for u in unit_prefs)
+    first_demand = dict.fromkeys(fids, 0)
+    rankers = dict.fromkeys(fids, 0)
+    for u, plist in unit_prefs.items():
+        first_demand[plist[0]] += size(u)
+        for f in plist:
+            rankers[f] += size(u)
+    per_formal = []
+    for f in fids:
+        fr = formal_rows.get(f)
+        per_formal.append({
+            "college": fr["host_college"] if fr else "?", "dt": fr["dt"] if fr else "",
+            "seats": capacity[f], "first_demand": first_demand[f],
+            "rankers": rankers[f],
+            "pressure": round(first_demand[f] / capacity[f], 2) if capacity[f] else None,
+            "mean_filled": round(filled[f] / trials, 1),
+            "pct_full": round(100 * full[f] / trials) if capacity[f] else None,
+        })
+    per_formal.sort(key=lambda r: -(r["pressure"] or 0))
+
+    def label(u):
+        members = [names.get(m, "?") for m in unit_members[u]]
+        if u.startswith("g:"):
+            p = parties.get(u) or ""
+            return (f"{p}: " if p else "Group: ") + ", ".join(members)
+        return members[0]
+
+    per_unit = [{
+        "who": label(u), "size": size(u), "group": u.startswith("g:"),
+        "first_choice": formal_rows[unit_prefs[u][0]]["host_college"]
+        if unit_prefs[u][0] in formal_rows else "?",
+        "ranked": len(unit_prefs[u]), "cap": unit_caps.get(u, 3),
+        "pct_first": round(100 * first_hits[u] / trials),
+        "pct_any": round(100 * any_hits[u] / trials),
+        "exp_places": round(places[u] / trials, 2),
+    } for u in unit_prefs]
+    per_unit.sort(key=lambda r: (r["pct_any"], r["who"]))
+    mean_placed = people_placed / trials
+    return {
+        "trials": trials, "entrants": entrants, "units": len(unit_prefs),
+        "groups": sum(1 for u in unit_prefs if u.startswith("g:")),
+        "seats": sum(capacity.values()),
+        "mean_placed": round(mean_placed, 1),
+        "mean_missed": round(entrants - mean_placed, 1),
+        "pct_placed": round(100 * mean_placed / entrants) if entrants else 0,
+        "mean_places_awarded": round(sum(filled.values()) / trials, 1),
+        "per_formal": per_formal, "per_unit": per_unit,
+    }
+
+
 def unit_id_for_user(unit_members, user_id):
     for uid, members in unit_members.items():
         if user_id in members:
