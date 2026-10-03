@@ -68,6 +68,9 @@ def init_db(db_path=None):
     ucols = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
     if "calendar_token" not in ucols:
         conn.execute("ALTER TABLE users ADD COLUMN calendar_token TEXT")
+    for col in ("manual_registered", "name_changed"):
+        if col not in ucols:
+            conn.execute(f"ALTER TABLE users ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0")
     # Migrate legacy single review photo -> review_photos, then clear the column
     # so it won't re-migrate.
     for r in conn.execute("SELECT id, photo FROM reviews WHERE photo != ''").fetchall():

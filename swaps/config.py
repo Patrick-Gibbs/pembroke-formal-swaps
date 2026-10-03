@@ -47,6 +47,7 @@ SOCIAL_LINKS = [
     ("Instagram", "https://www.instagram.com/paddygibbs_/"),
 ]
 
+MANUAL_REG_PIN = "1234"     # PIN given to people the admin registers by hand
 CANCEL_CUTOFF_HOURS = 12   # fallback; live value is the cancel_cutoff_hours setting
 CANCEL_CHARGE_HOURS = 72   # cancelling within this window charges the member
 VERIFY_TOKEN_MAX_AGE = 24 * 3600

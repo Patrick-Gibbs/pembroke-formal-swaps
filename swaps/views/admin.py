@@ -981,7 +981,52 @@ def users():
     rows = db.execute(
         "SELECT u.*, (SELECT COUNT(*) FROM allocations a WHERE a.user_id=u.id AND "
         "a.status='active') AS places FROM users u ORDER BY u.last_name").fetchall()
-    return render_template("admin/users.html", rows=rows)
+    return render_template("admin/users.html", rows=rows,
+                           default_pin=config.MANUAL_REG_PIN)
+
+
+@bp.route("/users/register", methods=["POST"])
+@admin_required
+def register_user():
+    """Register + verify someone by hand (any email domain) with the default
+    PIN, and email them their login details."""
+    import re
+
+    from .. import emailer
+    from ..security import hash_secret
+    db = get_db()
+    first = request.form.get("first_name", "").strip()[:80]
+    last = request.form.get("last_name", "").strip()[:80]
+    email = request.form.get("email", "").strip().lower()[:200]
+    if not first or not last:
+        flash("First and last name are required.", "error")
+        return redirect(url_for("admin.users"))
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        flash("That doesn't look like a valid email address.", "error")
+        return redirect(url_for("admin.users"))
+    pin = config.MANUAL_REG_PIN
+    existing = db.execute("SELECT id, email_verified FROM users WHERE email=?",
+                          (email,)).fetchone()
+    if existing and existing["email_verified"]:
+        flash(f"{email} is already registered.", "error")
+        return redirect(url_for("admin.users"))
+    if existing:   # started registering but never verified: complete it
+        db.execute("UPDATE users SET first_name=?, last_name=?, pin_hash=?, "
+                   "email_verified=1, manual_registered=1, name_changed=0 WHERE id=?",
+                   (first, last, hash_secret(pin), existing["id"]))
+        uid = existing["id"]
+    else:
+        uid = db.execute(
+            "INSERT INTO users(first_name, last_name, email, email_verified, pin_hash, "
+            "manual_registered) VALUES (?,?,?,1,?,1)",
+            (first, last, email, hash_secret(pin))).lastrowid
+    audit(db, "admin", "manual_register", f"user={uid} email={email}")
+    sent = emailer.manual_registration_email(email, first, pin)
+    flash(f"Registered {first} {last} ({email}). "
+          + ("Their login details have been emailed." if sent else
+             "WARNING: the welcome email failed to send — check the Email log."),
+          "ok" if sent else "error")
+    return redirect(url_for("admin.users"))
 
 
 @bp.route("/subscriptions")

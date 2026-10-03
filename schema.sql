@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS users (
     pin_hash TEXT NOT NULL,
     dietary_flags TEXT NOT NULL DEFAULT '',   -- comma-separated ticked boxes
     dietary_other TEXT NOT NULL DEFAULT '',   -- free text
+    manual_registered INTEGER NOT NULL DEFAULT 0,  -- registered by the admin
+    name_changed INTEGER NOT NULL DEFAULT 0,       -- used their one name fix
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

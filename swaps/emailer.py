@@ -202,6 +202,31 @@ def verification_email(to, link):
         f"<p>If you didn't register, ignore this email.</p>")
 
 
+def manual_registration_email(to, first_name, pin):
+    """Sent when the swaps officer registers someone by hand. Not an editable
+    template: it carries login credentials, like the verification/reset emails."""
+    from html import escape
+    site = config.SITE_URL
+    return send(
+        to, "You're registered — Pembroke Formal Swaps",
+        f"<p>Hi {escape(first_name)},</p>"
+        f"<p>The Pembroke swaps officer has registered you for "
+        f"<b>Pembroke Formal Swaps</b>, where you can enter the ballot for formal "
+        f"swaps at other colleges.</p>"
+        f"<p>Your login details:<br>"
+        f"Username (your email): <b>{escape(to)}</b><br>"
+        f"PIN: <b>{escape(pin)}</b></p>"
+        f"<p><a href=\"{site}/login\">Log in here</a>, then:</p>"
+        f"<ul>"
+        f"<li><b>Set your preferences</b> — rank the formals you'd like to go to on "
+        f"<a href=\"{site}/rank\">My ranking</a>, most wanted first.</li>"
+        f"<li><b>Check your dietary requirements</b> — add or edit them under "
+        f"<a href=\"{site}/me\">My formals</a> → Your details.</li>"
+        f"<li><b>Change your PIN</b> — please choose your own 4-digit PIN in the same "
+        f"place, so nobody else can log in as you.</li>"
+        f"</ul>")
+
+
 def pin_reset_email(to, link):
     return send(
         to, "Reset your PIN — Pembroke Formal Swaps",

@@ -1,6 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Users</h1>
+<div class="card" id="register">
+  <h3 style="margin-top:.2rem">Register someone manually</h3>
+  <p class="muted">They're registered and verified straight away (any email address,
+  not just cam.ac.uk) with PIN <b>{{ default_pin }}</b>, and emailed their login details
+  with a prompt to rank formals, check their dietary requirements and change their PIN.</p>
+  <form method="post" action="/admin/users/register"
+        onsubmit="return confirm('Register this person and email them their login details?')">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <label>First name</label><input type="text" name="first_name" required maxlength="80">
+    <label>Last name</label><input type="text" name="last_name" required maxlength="80">
+    <label>Email</label><input type="email" name="email" required maxlength="200">
+    <p><button>Register &amp; email login details</button></p>
+  </form>
+</div>
 <table>
   <tr><th>Name</th><th>Email</th><th>Verified</th><th>Dietary</th><th>Active places</th><th>Joined</th></tr>
   {% for u in rows %}

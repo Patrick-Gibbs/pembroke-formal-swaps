@@ -13,6 +13,7 @@ from ..security import (chat_global_limited, chat_rate_limited, client_ip,
 from ..services import (CancelError, ClaimError, cancel_allocation,
                         cancel_charge_hours, cancel_cutoff_hours, claim_seat,
                         free_seats, hours_until_formal, local_now, parse_local)
+from .auth import DIETARY_CHOICES
 
 PHOTO_MAX_DIM = 2000   # longest edge, px — larger uploads are downscaled
 MAX_REVIEW_PHOTOS = 3
@@ -341,7 +342,9 @@ def me():
                            cancellable=cancellable, will_charge=will_charge,
                            past=past, reviewed_ids=reviewed_ids,
                            cutoff_h=int(cutoff), charge_h=int(charge_h),
-                           cal_url=cal_url, reviews=reviews, stats=stats)
+                           cal_url=cal_url, reviews=reviews, stats=stats,
+                           dietary_choices=DIETARY_CHOICES,
+                           default_pin=config.MANUAL_REG_PIN)
 
 
 @bp.route("/profile")
@@ -490,6 +493,74 @@ def account_delete():
     session.clear()
     flash("Your account and personal data have been permanently deleted.", "ok")
     return redirect(url_for("main.index"))
+
+
+@bp.route("/account/dietary", methods=["POST"])
+@login_required
+def account_dietary():
+    db = get_db()
+    user = current_user()
+    flags = [c for c in DIETARY_CHOICES if request.form.get("diet_" + c)]
+    other = request.form.get("dietary_other", "").strip()[:500]
+    db.execute("UPDATE users SET dietary_flags=?, dietary_other=? WHERE id=?",
+               (",".join(flags), other, user["id"]))
+    audit(db, f"user:{user['id']}", "dietary_update", "")
+    flash("Dietary requirements saved.", "ok")
+    return redirect(url_for("main.me") + "#details")
+
+
+@bp.route("/account/pin", methods=["POST"])
+@login_required
+def account_pin():
+    from ..security import (hash_secret, lockout_remaining, record_attempt,
+                            verify_secret)
+    from .auth import PIN_RE
+    db = get_db()
+    user = current_user()
+    back = url_for("main.me") + "#details"
+    # Same lockout as login, so a stolen session can't brute-force the PIN.
+    if lockout_remaining(db, "user", user["email"]):
+        flash("Too many wrong PINs — try again later.", "error")
+        return redirect(back)
+    ok = verify_secret(user["pin_hash"], request.form.get("current_pin", ""))
+    record_attempt(db, "user", user["email"], client_ip(), ok)
+    if not ok:
+        flash("Current PIN is incorrect.", "error")
+        return redirect(back)
+    new = request.form.get("new_pin", "")
+    if not PIN_RE.match(new):
+        flash("New PIN must be exactly 4 digits.", "error")
+    elif new != request.form.get("confirm_pin", ""):
+        flash("The two new PINs don't match.", "error")
+    elif new == config.MANUAL_REG_PIN:
+        flash(f"Please choose a PIN other than {config.MANUAL_REG_PIN}.", "error")
+    else:
+        db.execute("UPDATE users SET pin_hash=? WHERE id=?", (hash_secret(new), user["id"]))
+        audit(db, f"user:{user['id']}", "pin_change", "from profile")
+        flash("PIN changed.", "ok")
+    return redirect(back)
+
+
+@bp.route("/account/name", methods=["POST"])
+@login_required
+def account_name():
+    """One-time name correction for members the admin registered by hand."""
+    db = get_db()
+    user = current_user()
+    if not user["manual_registered"] or user["name_changed"]:
+        flash("Your name can't be changed here — contact the swaps officer.", "error")
+        return redirect(url_for("main.me") + "#details")
+    first = request.form.get("first_name", "").strip()[:80]
+    last = request.form.get("last_name", "").strip()[:80]
+    if not first or not last:
+        flash("First and last name are required.", "error")
+        return redirect(url_for("main.me") + "#details")
+    db.execute("UPDATE users SET first_name=?, last_name=?, name_changed=1 WHERE id=?",
+               (first, last, user["id"]))
+    audit(db, f"user:{user['id']}", "name_change",
+          f"{user['first_name']} {user['last_name']} -> {first} {last}")
+    flash("Name updated.", "ok")
+    return redirect(url_for("main.me") + "#details")
 
 
 def _swaps_published(db):

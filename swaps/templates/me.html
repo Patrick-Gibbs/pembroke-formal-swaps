@@ -48,6 +48,48 @@ hours before you can still cancel, but you'll be charged for the formal swap.
 If you need to cancel within {{ cutoff_h }} hours of a formal, let
 <a href="/officer">Patrick</a> know.</p>
 {% endif %}
+<h2 id="details">Your details</h2>
+<div class="card">
+  <p><b>{{ user['first_name'] }} {{ user['last_name'] }}</b> · {{ user['email'] }}</p>
+  {% if user['manual_registered'] and not user['name_changed'] %}
+  <details>
+    <summary style="cursor:pointer;color:#003b6f">Name spelled wrong? Fix it (you can do this once)</summary>
+    <form method="post" action="/account/name"
+          onsubmit="return confirm('Save this name? You can only change it once.')">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <label>First name</label><input type="text" name="first_name" required maxlength="80" value="{{ user['first_name'] }}">
+      <label>Last name</label><input type="text" name="last_name" required maxlength="80" value="{{ user['last_name'] }}">
+      <p><button class="small">Save name</button></p>
+    </form>
+  </details>
+  {% endif %}
+
+  <h3>Dietary requirements</h3>
+  <form method="post" action="/account/dietary">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    {% set mine = (user['dietary_flags'] or '').split(',') %}
+    {% for c in dietary_choices %}
+    <label style="display:inline-block;font-weight:normal;margin:.2rem 1rem .2rem 0">
+      <input type="checkbox" name="diet_{{ c }}" {% if c in mine %}checked{% endif %}> {{ c }}</label>
+    {% endfor %}
+    <label>Anything else (allergies, intolerances…)</label>
+    <input type="text" name="dietary_other" maxlength="500" value="{{ user['dietary_other'] }}">
+    <p><button class="small">Save dietary requirements</button></p>
+  </form>
+  <p class="muted">Only the swaps officer and the host college's catering team see these.
+  If a host college has already been sent its list for a formal you're going to, let
+  <a href="/officer">Patrick</a> know about any change.</p>
+
+  <h3>Change PIN</h3>
+  <form method="post" action="/account/pin" autocomplete="off">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <label>Current PIN</label><input type="password" name="current_pin" inputmode="numeric" pattern="\d{4}" maxlength="4" required>
+    <label>New 4-digit PIN</label><input type="password" name="new_pin" inputmode="numeric" pattern="\d{4}" maxlength="4" required>
+    <label>Repeat new PIN</label><input type="password" name="confirm_pin" inputmode="numeric" pattern="\d{4}" maxlength="4" required>
+    <p><button class="small">Change PIN</button></p>
+  </form>
+</div>
+
 <h2>Add to your calendar</h2>
 <div class="card">
   <p>Subscribe once and every formal you're allocated appears in your calendar
