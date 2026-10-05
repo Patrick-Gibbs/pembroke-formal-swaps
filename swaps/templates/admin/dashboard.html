@@ -135,6 +135,14 @@
     <td>
       <a class="btn" style="font-size:.8rem;padding:.15rem .5rem" href="/admin/formals/{{ f['id'] }}/roster">Roster</a>
       <a class="btn ghost" style="font-size:.8rem;padding:.15rem .5rem" href="/admin/formals/{{ f['id'] }}/edit">Edit</a>
+      {% if f['status'] == 'allocated' %}
+      <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/catering-email"
+            onsubmit="return confirm('{% if f['catering_sent'] %}Re-send the attendance list + dietary to {{ f['host_college'] }}?{% else %}Email {{ f['host_college'] }} the attendance list + dietary now? This locks the list: anyone who claims a freed place afterwards takes the dropped person\'s meal, and peer swaps for this formal close.{% endif %}')">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <input type="hidden" name="back" value="dashboard">
+        <button class="small{% if f['catering_sent'] %} ghost{% endif %}">{% if f['catering_sent'] %}✓ List sent · resend{% else %}✉ Email host{% endif %}</button>
+      </form>
+      {% endif %}
       <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/duplicate">
         <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
         <button class="small ghost">Duplicate</button>

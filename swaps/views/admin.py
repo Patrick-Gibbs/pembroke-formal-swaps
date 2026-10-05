@@ -798,24 +798,29 @@ def catering_email_now(fid):
     from .. import emailer
     from ..services import catering_list, catering_recipients
     db = get_db()
+    back = (url_for("admin.dashboard") if request.form.get("back") == "dashboard"
+            else url_for("admin.roster", fid=fid))
     f = db.execute("SELECT * FROM formals WHERE id=?", (fid,)).fetchone()
     if f is None:
         return redirect(url_for("admin.dashboard"))
     rows = catering_list(db, fid)
     if not rows:
         flash("No attendees yet — nothing to send.", "error")
-        return redirect(url_for("admin.roster", fid=fid))
+        return redirect(back)
     to, cc = catering_recipients(f["host_email"], get_setting(db, "admin_email", ""))
     if not to:
         flash("Set the host contact email(s) (edit the formal) or an admin email "
               "(Settings) first.", "error")
-        return redirect(url_for("admin.roster", fid=fid))
-    emailer.catering_email(to, cc, f, rows, get_setting(db, "admin_name", ""))
+        return redirect(back)
+    if not emailer.catering_email(to, cc, f, rows, get_setting(db, "admin_name", "")):
+        flash(f"The email to {', '.join(to)} failed to send — check the Email log. "
+              "The list has NOT been marked as sent.", "error")
+        return redirect(back)
     db.execute("UPDATE formals SET catering_sent=1 WHERE id=?", (fid,))
     audit(db, "admin", "catering_email", f"formal={fid} to={to} cc={cc}")
-    flash(f"Attendance list sent to {', '.join(to)}"
+    flash(f"{f['host_college']}: attendance list sent to {', '.join(to)}"
           + (f" (cc {cc})" if cc else "") + ".", "ok")
-    return redirect(url_for("admin.roster", fid=fid))
+    return redirect(back)
 
 
 @bp.route("/export.csv")

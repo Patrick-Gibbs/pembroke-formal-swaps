@@ -12,9 +12,9 @@
   <button class="btn" type="button" onclick="copyTable('copy-roster', this)">📋 Copy for email</button>
   <a class="btn" href="?csv=1">Export CSV (active attendees)</a>
   <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/catering-email"
-        onsubmit="return confirm('Email the host college the attendance list + dietary now (cc the admin email)?')">
+        onsubmit="return confirm('{% if f['catering_sent'] %}Re-send the attendance list + dietary to {{ f['host_college'] }}?{% else %}Email {{ f['host_college'] }} the attendance list + dietary now? This locks the list: anyone who claims a freed place afterwards takes the dropped person\'s meal, and peer swaps for this formal close.{% endif %}')">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-    <button class="btn">✉ Email host the list now</button>
+    <button class="btn">{% if f['catering_sent'] %}✓ List sent · resend to host{% else %}✉ Email host the list now{% endif %}</button>
   </form>
   <a class="btn ghost" href="/admin/">Back</a>
   &nbsp; Free seats now: <b>{{ free }}</b> / {{ f['slots'] }}
