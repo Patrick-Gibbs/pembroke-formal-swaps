@@ -95,6 +95,21 @@ CREATE TABLE IF NOT EXISTS auto_subscriptions (
     UNIQUE(user_id, formal_id)
 );
 
+-- Admin-maintained list of Pembroke members. `key` = 'crsid:<crsid>' for any
+-- *cam.ac.uk address (so crsid@cam.ac.uk and crsid@pem.cam.ac.uk match), else
+-- the lowercased email.
+CREATE TABLE IF NOT EXISTS member_allowlist (
+    key TEXT PRIMARY KEY,
+    email TEXT NOT NULL
+);
+
+-- Emails (same key scheme) barred from registering.
+CREATE TABLE IF NOT EXISTS email_blacklist (
+    key TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS login_attempts (
     id INTEGER PRIMARY KEY,
     kind TEXT NOT NULL,              -- 'user' | 'admin'

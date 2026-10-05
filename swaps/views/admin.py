@@ -1004,6 +1004,11 @@ def register_user():
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         flash("That doesn't look like a valid email address.", "error")
         return redirect(url_for("admin.users"))
+    from ..services import is_blacklisted
+    if is_blacklisted(db, email):
+        flash(f"{email} is blacklisted — remove it from the blacklist on the Member "
+              "list page first.", "error")
+        return redirect(url_for("admin.users"))
     pin = config.MANUAL_REG_PIN
     existing = db.execute("SELECT id, email_verified FROM users WHERE email=?",
                           (email,)).fetchone()
@@ -1149,3 +1154,73 @@ def simulate_admin():
     finally:
         _SIM_SEMAPHORE.release()
     return render_template("admin/simulate.html", term=term, sim=sim)
+
+
+# ---------------------------------------------------------------- member list
+
+@bp.route("/members")
+@admin_required
+def members():
+    """Maintain the Pembroke member list, check registrations against it, and
+    manage the blacklist."""
+    from ..services import users_not_on_allowlist
+    db = get_db()
+    listed = [r["email"] for r in db.execute(
+        "SELECT email FROM member_allowlist ORDER BY email")]
+    checked = request.args.get("check") == "1"
+    return render_template(
+        "admin/members.html", listed=listed, checked=checked,
+        flagged=users_not_on_allowlist(db) if checked else [],
+        users_n=db.execute("SELECT COUNT(*) FROM users").fetchone()[0],
+        blacklist=db.execute("SELECT key, email, created_at FROM email_blacklist "
+                             "ORDER BY created_at DESC").fetchall())
+
+
+@bp.route("/members/list", methods=["POST"])
+@admin_required
+def members_save():
+    from ..services import set_member_allowlist
+    db = get_db()
+    n, rejected = set_member_allowlist(db, request.form.get("emails", ""))
+    audit(db, "admin", "member_list_save", f"entries={n} rejected={len(rejected)}")
+    flash(f"Member list saved: {n} email(s).", "ok")
+    if rejected:
+        flash("Skipped lines that aren't email addresses: " + ", ".join(rejected[:20])
+              + (" …" if len(rejected) > 20 else ""), "error")
+    return redirect(url_for("admin.members"))
+
+
+@bp.route("/members/blacklist/<int:uid>", methods=["POST"])
+@admin_required
+def members_blacklist(uid):
+    import os
+
+    from ..services import blacklist_and_delete_user
+    db = get_db()
+    u = db.execute("SELECT email FROM users WHERE id=?", (uid,)).fetchone()
+    admin_email = get_setting(db, "admin_email", "").strip().lower()
+    if u and admin_email and u["email"].lower() == admin_email:
+        flash("That's the swaps officer's own account — not deleted.", "error")
+        return redirect(url_for("admin.members", check=1))
+    photos = blacklist_and_delete_user(db, uid)
+    if photos is None:
+        flash("That account no longer exists.", "error")
+    else:
+        for name in photos:
+            try:
+                os.remove(os.path.join(config.PHOTOS_DIR, name))
+            except OSError:
+                pass
+        flash(f"Deleted and blacklisted {u['email']}.", "ok")
+    return redirect(url_for("admin.members", check=1))
+
+
+@bp.route("/members/unblacklist", methods=["POST"])
+@admin_required
+def members_unblacklist():
+    db = get_db()
+    key = request.form.get("key", "")
+    db.execute("DELETE FROM email_blacklist WHERE key=?", (key,))
+    audit(db, "admin", "unblacklist", "1 entry")  # no email in the audit log
+    flash("Removed from the blacklist — they can register again.", "ok")
+    return redirect(url_for("admin.members"))

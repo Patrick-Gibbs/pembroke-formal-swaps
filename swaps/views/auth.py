@@ -61,6 +61,12 @@ def register():
                                    dietary_choices=DIETARY_CHOICES)
 
         db = get_db()
+        from ..services import is_blacklisted
+        if is_blacklisted(db, email):
+            flash("This email can't be registered. If you think that's a mistake, "
+                  "contact the swaps officer.", "error")
+            return render_template("register.html", form=request.form,
+                                   dietary_choices=DIETARY_CHOICES)
         existing = db.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
         if existing and existing["email_verified"]:
             flash("That email is already registered — log in instead.", "error")

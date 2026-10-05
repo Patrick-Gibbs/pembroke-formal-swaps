@@ -314,6 +314,87 @@ def auto_subscribe_unmet(conn, term):
     return added
 
 
+def email_key(email):
+    """Identity key for allowlist/blacklist matching: any *cam.ac.uk address
+    reduces to its CRSid (crsid@cam.ac.uk == crsid@pem.cam.ac.uk); anything
+    else is the lowercased email."""
+    e = (email or "").strip().lower()
+    local, _, domain = e.partition("@")
+    if domain == "cam.ac.uk" or domain.endswith(".cam.ac.uk"):
+        return "crsid:" + local
+    return e
+
+
+def is_blacklisted(conn, email):
+    return conn.execute("SELECT 1 FROM email_blacklist WHERE key=?",
+                        (email_key(email),)).fetchone() is not None
+
+
+def set_member_allowlist(conn, text):
+    """Replace the Pembroke member list from newline-separated text. Returns
+    (saved_count, rejected_lines)."""
+    import re
+    valid = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    entries, rejected = {}, []
+    for line in (text or "").splitlines():
+        e = line.strip().strip(",;<>").lower()
+        if not e:
+            continue
+        if not valid.match(e):
+            rejected.append(line.strip())
+            continue
+        entries.setdefault(email_key(e), e)
+    with immediate(conn):
+        conn.execute("DELETE FROM member_allowlist")
+        conn.executemany("INSERT INTO member_allowlist(key, email) VALUES (?,?)",
+                         list(entries.items()))
+    return len(entries), rejected
+
+
+def users_not_on_allowlist(conn):
+    """Registered accounts (verified or not) whose email isn't on the member
+    list, with context to help decide: active places, manual registration,
+    and whether it's the swaps officer's own account."""
+    allowed = {r["key"] for r in conn.execute("SELECT key FROM member_allowlist")}
+    admin_key = email_key(get_setting(conn, "admin_email", ""))
+    out = []
+    for u in conn.execute(
+            "SELECT u.id, u.first_name, u.last_name, u.email, u.email_verified, "
+            "u.manual_registered, u.created_at, (SELECT COUNT(*) FROM allocations a "
+            "WHERE a.user_id=u.id AND a.status='active') AS places FROM users u "
+            "ORDER BY u.last_name, u.first_name").fetchall():
+        k = email_key(u["email"])
+        if k not in allowed:
+            d = dict(u)
+            d["is_admin"] = bool(admin_key) and k == admin_key
+            out.append(d)
+    return out
+
+
+def blacklist_and_delete_user(conn, user_id, actor="admin"):
+    """Blacklist a member's email (by key) and permanently delete their account
+    and data. Returns the photo filenames to remove from disk, or None if the
+    user doesn't exist."""
+    u = conn.execute("SELECT email FROM users WHERE id=?", (user_id,)).fetchone()
+    if u is None:
+        return None
+    conn.execute("INSERT OR IGNORE INTO email_blacklist(key, email) VALUES (?,?)",
+                 (email_key(u["email"]), u["email"].lower()))
+    # Upcoming places go back through the normal randomised release (so
+    # subscribers are notified) rather than silently vanishing.
+    for a in conn.execute(
+            "SELECT a.id, f.dt FROM allocations a JOIN formals f ON f.id=a.formal_id "
+            "WHERE a.user_id=? AND a.status='active'", (user_id,)).fetchall():
+        if hours_until_formal(a["dt"]) > 0:
+            try:
+                cancel_allocation(conn, None, a["id"], actor=actor)
+            except CancelError:
+                pass
+    photos = delete_user_data(conn, user_id)
+    audit(conn, actor, "blacklist_delete", f"user={user_id}")
+    return photos
+
+
 def unranked_members(conn, term):
     """Verified members who haven't ranked any formal for `term` — the people a
     'please rank' reminder should go to. Excluded: accepted non-leader group
@@ -700,6 +781,11 @@ def delete_user_data(conn, user_id):
         # Break released_slots references before deleting allocations.
         conn.execute("UPDATE released_slots SET claimed_by=NULL WHERE claimed_by=?",
                      (user_id,))
+        # Erase the leaver's name from any seat snapshot (the frozen dietary
+        # stays: the host's list depends on it).
+        conn.execute("UPDATE released_slots SET orig_name='a member who cancelled' "
+                     "WHERE orig_name IS NOT NULL AND allocation_id IN "
+                     "(SELECT id FROM allocations WHERE user_id=?)", (user_id,))
         conn.execute("UPDATE released_slots SET allocation_id=NULL WHERE allocation_id "
                      "IN (SELECT id FROM allocations WHERE user_id=?)", (user_id,))
         conn.execute("DELETE FROM review_photos WHERE review_id IN "
