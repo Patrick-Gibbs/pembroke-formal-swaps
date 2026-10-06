@@ -97,6 +97,29 @@ def pending_holds(conn, formal_id, priority=False):
         (formal_id, now)).fetchone()["n"]
 
 
+def release_now(conn, formal_id, everyone):
+    """Admin override: open a formal's waiting (cancelled, not yet released)
+    places immediately — to members who missed out (everyone=False) or to all
+    members (everyone=True). The release worker emails the matching subscribers
+    on its next pass. Returns the number of places affected."""
+    now = utcnow_str()
+    with immediate(conn):
+        if everyone:
+            n = conn.execute(
+                "UPDATE released_slots SET release_at=MIN(release_at, ?), general_at=? "
+                "WHERE formal_id=? AND claimed_by IS NULL "
+                "AND COALESCE(general_at, release_at) > ?",
+                (now, now, formal_id, now)).rowcount
+        else:
+            n = conn.execute(
+                "UPDATE released_slots SET release_at=? WHERE formal_id=? "
+                "AND claimed_by IS NULL AND release_at > ?",
+                (now, formal_id, now)).rowcount
+        audit(conn, "admin", "release_now",
+              f"formal={formal_id} to={'everyone' if everyone else 'no-swaps'} places={n}")
+    return n
+
+
 def active_count(conn, formal_id):
     return conn.execute(
         "SELECT COUNT(*) AS n FROM allocations WHERE formal_id=? AND status='active'",

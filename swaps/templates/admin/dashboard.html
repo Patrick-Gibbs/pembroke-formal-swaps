@@ -11,7 +11,7 @@
     <a href="/admin/preview"><b>Preview all rosters</b></a>, then publish.
   </span>
   <form method="post" action="/admin/publish" class="inline"
-        onsubmit="return confirm('Publish results? Everyone gets their result email (with calendar invites) and the assigned swaps page goes public.')">
+        data-confirm="Publish results? Everyone gets their result email (with calendar invites) and the assigned swaps page goes public." onsubmit="return confirm(this.dataset.confirm)">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <button>📣 Publish results</button>
   </form>
@@ -42,7 +42,7 @@
   <button class="btn ghost" type="button" onclick="copyTable('copy-all-rosters', this)">📋 Copy all rosters</button>
   {% if results_published %}
   <form method="post" action="/admin/republish" class="inline"
-        onsubmit="return confirm('Resend ballot result emails to EVERYONE for this term? All winners get their full results (with calendar invites) again, and entrants without a place get the miss note again.')">
+        data-confirm="Resend ballot result emails to EVERYONE for this term? All winners get their full results (with calendar invites) again, and entrants without a place get the miss note again." onsubmit="return confirm(this.dataset.confirm)">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <button class="ghost">↻ Republish results (resend all emails)</button>
   </form>
@@ -135,9 +135,21 @@
     <td>
       <a class="btn" style="font-size:.8rem;padding:.15rem .5rem" href="/admin/formals/{{ f['id'] }}/roster">Roster</a>
       <a class="btn ghost" style="font-size:.8rem;padding:.15rem .5rem" href="/admin/formals/{{ f['id'] }}/edit">Edit</a>
+      {% if stats[f['id']]['held_pri'] %}
+      <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/release"
+            data-confirm="Release {{ stats[f['id']]['held_pri'] }} waiting place(s) at {{ f['host_college'] }} now to members with NO swaps? Their subscribers are emailed straight away." onsubmit="return confirm(this.dataset.confirm)">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="to" value="noswaps"><input type="hidden" name="back" value="dashboard">
+        <button class="small">Release to no-swaps ({{ stats[f['id']]['held_pri'] }})</button>
+      </form>{% endif %}
+      {% if stats[f['id']]['held_all'] %}
+      <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/release"
+            data-confirm="Release {{ stats[f['id']]['held_all'] }} waiting place(s) at {{ f['host_college'] }} now to EVERYONE? All subscribers are emailed straight away." onsubmit="return confirm(this.dataset.confirm)">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="to" value="all"><input type="hidden" name="back" value="dashboard">
+        <button class="small">Release to all ({{ stats[f['id']]['held_all'] }})</button>
+      </form>{% endif %}
       {% if f['status'] == 'allocated' %}
       <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/catering-email"
-            onsubmit="return confirm('{% if f['catering_sent'] %}Re-send the attendance list + dietary to {{ f['host_college'] }}?{% else %}Email {{ f['host_college'] }} the attendance list + dietary now? This locks the list: anyone who claims a freed place afterwards takes the dropped person\'s meal, and peer swaps for this formal close.{% endif %}')">
+            data-confirm="{% if f['catering_sent'] %}Re-send the attendance list + dietary to {{ f['host_college'] }}?{% else %}Email {{ f['host_college'] }} the attendance list + dietary now? This locks the list: anyone who claims a freed place afterwards takes the dropped person's meal, and peer swaps for this formal close.{% endif %}" onsubmit="return confirm(this.dataset.confirm)">
         <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
         <input type="hidden" name="back" value="dashboard">
         <button class="small{% if f['catering_sent'] %} ghost{% endif %}">{% if f['catering_sent'] %}✓ List sent · resend{% else %}✉ Email host{% endif %}</button>
@@ -148,7 +160,7 @@
         <button class="small ghost">Duplicate</button>
       </form>
       <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/delete"
-            onsubmit="return confirm('Delete this formal and all its data?')">
+            data-confirm="Delete this formal and all its data?" onsubmit="return confirm(this.dataset.confirm)">
         <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
         <button class="small danger">Delete</button>
       </form>

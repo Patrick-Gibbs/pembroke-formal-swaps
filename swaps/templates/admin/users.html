@@ -7,7 +7,7 @@
   not just cam.ac.uk) with PIN <b>{{ default_pin }}</b>, and emailed their login details
   with a prompt to rank formals, check their dietary requirements and change their PIN.</p>
   <form method="post" action="/admin/users/register"
-        onsubmit="return confirm('Register this person and email them their login details?')">
+        data-confirm="Register this person and email them their login details?" onsubmit="return confirm(this.dataset.confirm)">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <label>First name</label><input type="text" name="first_name" required maxlength="80">
     <label>Last name</label><input type="text" name="last_name" required maxlength="80">

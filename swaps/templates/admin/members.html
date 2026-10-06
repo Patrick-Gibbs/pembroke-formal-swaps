@@ -43,7 +43,7 @@
         <td>{{ u['places'] }}</td>
         <td>{% if not u['is_admin'] %}
           <form class="inline" method="post" action="/admin/members/blacklist/{{ u['id'] }}"
-                onsubmit="return confirm('Permanently delete {{ u['email'] }} and blacklist this email?{% if u['places'] %} They hold {{ u['places'] }} place(s), which will be freed.{% endif %} This cannot be undone (the blacklist can).')">
+                data-confirm="Permanently delete {{ u['email'] }} and blacklist this email?{% if u['places'] %} They hold {{ u['places'] }} place(s), which will be freed.{% endif %} This cannot be undone (the blacklist can)." onsubmit="return confirm(this.dataset.confirm)">
             <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
             <button class="small danger">Delete &amp; blacklist</button>
           </form>{% endif %}
@@ -67,7 +67,7 @@
     <tr><td>{{ b['email'] }}{% if b['key'].startswith('crsid:') %} <span class="muted">(any {{ b['key'][6:] }}@…cam.ac.uk)</span>{% endif %}</td>
         <td>{{ b['created_at'] }}</td>
         <td><form class="inline" method="post" action="/admin/members/unblacklist"
-                  onsubmit="return confirm('Allow {{ b['email'] }} to register again?')">
+                  data-confirm="Allow {{ b['email'] }} to register again?" onsubmit="return confirm(this.dataset.confirm)">
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
           <input type="hidden" name="key" value="{{ b['key'] }}">
           <button class="small ghost">Remove</button></form></td></tr>

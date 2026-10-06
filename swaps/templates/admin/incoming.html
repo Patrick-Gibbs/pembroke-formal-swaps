@@ -46,7 +46,7 @@
     <p><button class="small">Save swap details</button></p>
   </form>
   <form method="post" action="/admin/incoming/{{ s['id'] }}/delete" class="inline"
-        onsubmit="return confirm('Delete this incoming swap and its guest list?')">
+        data-confirm="Delete this incoming swap and its guest list?" onsubmit="return confirm(this.dataset.confirm)">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <button class="small danger">Delete swap</button>
   </form>

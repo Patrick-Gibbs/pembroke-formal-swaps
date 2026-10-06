@@ -5,7 +5,7 @@
 <p>
   {% if not results_published %}
   <form method="post" action="/admin/publish" class="inline"
-        onsubmit="return confirm('Publish results? Everyone gets their result email (with calendar invites) and the assigned swaps page goes public.')">
+        data-confirm="Publish results? Everyone gets their result email (with calendar invites) and the assigned swaps page goes public." onsubmit="return confirm(this.dataset.confirm)">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <button>📣 Publish results</button>
   </form>

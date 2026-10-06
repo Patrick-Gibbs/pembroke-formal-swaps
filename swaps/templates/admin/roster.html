@@ -12,10 +12,22 @@
   <button class="btn" type="button" onclick="copyTable('copy-roster', this)">📋 Copy for email</button>
   <a class="btn" href="?csv=1">Export CSV (active attendees)</a>
   <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/catering-email"
-        onsubmit="return confirm('{% if f['catering_sent'] %}Re-send the attendance list + dietary to {{ f['host_college'] }}?{% else %}Email {{ f['host_college'] }} the attendance list + dietary now? This locks the list: anyone who claims a freed place afterwards takes the dropped person\'s meal, and peer swaps for this formal close.{% endif %}')">
+        data-confirm="{% if f['catering_sent'] %}Re-send the attendance list + dietary to {{ f['host_college'] }}?{% else %}Email {{ f['host_college'] }} the attendance list + dietary now? This locks the list: anyone who claims a freed place afterwards takes the dropped person's meal, and peer swaps for this formal close.{% endif %}" onsubmit="return confirm(this.dataset.confirm)">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <button class="btn">{% if f['catering_sent'] %}✓ List sent · resend to host{% else %}✉ Email host the list now{% endif %}</button>
   </form>
+{% if held_pri %}
+      <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/release"
+            data-confirm="Release {{ held_pri }} waiting place(s) at {{ f['host_college'] }} now to members with NO swaps? Their subscribers are emailed straight away." onsubmit="return confirm(this.dataset.confirm)">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="to" value="noswaps">
+        <button class="small">Release to no-swaps ({{ held_pri }})</button>
+      </form>{% endif %}
+      {% if held %}
+      <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/release"
+            data-confirm="Release {{ held }} waiting place(s) at {{ f['host_college'] }} now to EVERYONE? All subscribers are emailed straight away." onsubmit="return confirm(this.dataset.confirm)">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="to" value="all">
+        <button class="small">Release to all ({{ held }})</button>
+      </form>{% endif %}
   <a class="btn ghost" href="/admin/">Back</a>
   &nbsp; Free seats now: <b>{{ free }}</b> / {{ f['slots'] }}{% if held %} <span class="muted">(+{{ held }} cancelled, awaiting public release — you can still fill {{ 'it' if held == 1 else 'these' }} below)</span>{% endif %}
 </p>
@@ -47,7 +59,7 @@
     <td>{{ r['source'] }}</td>
     <td>{% if r['status'] == 'active' %}
       <form class="inline" method="post" action="/admin/allocations/{{ r['alloc_id'] }}/cancel"
-            onsubmit="return confirm('Remove {{ r['first_name'] }} from this formal?')">
+            data-confirm="Remove {{ r['first_name'] }} from this formal?" onsubmit="return confirm(this.dataset.confirm)">
         <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
         <button class="small danger">Remove</button>
       </form>{% endif %}
@@ -58,7 +70,7 @@
 <div class="card">
   <h3>Email all attendees</h3>
   <form method="post" action="/admin/formals/{{ f['id'] }}/email-all"
-        onsubmit="return confirm('Send this email to every active attendee of this formal?')">
+        data-confirm="Send this email to every active attendee of this formal?" onsubmit="return confirm(this.dataset.confirm)">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <label>Subject</label>
     <input type="text" name="subject" required placeholder="e.g. {{ f['host_college'] }} formal — meeting point update">

@@ -87,14 +87,14 @@
   appears on this page for them.</p>
   <p><b>Your <a href="/rank">ranking</a> applies to the whole group.</b></p>
   <form method="post" action="/ballot/leave"
-        onsubmit="return confirm('Disband the group? Everyone will ballot individually again.')">
+        data-confirm="Disband the group? Everyone will ballot individually again." onsubmit="return confirm(this.dataset.confirm)">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <button class="danger">Disband group</button>
   </form>
   {% else %}
   <p>The leader's ranking covers you — you don't need to fill in preferences.</p>
   <form method="post" action="/ballot/leave"
-        onsubmit="return confirm('Leave the group and ballot individually?')">
+        data-confirm="Leave the group and ballot individually?" onsubmit="return confirm(this.dataset.confirm)">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <button class="danger">Leave group</button>
   </form>

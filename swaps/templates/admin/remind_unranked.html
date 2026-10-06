@@ -15,7 +15,7 @@
     before sending — the email tells people the deadline.</p>
   {% elif people %}
   <form method="post"
-        onsubmit="return confirm('Email {{ people|length }} member(s) asking them to rank before {{ deadline }}?')">
+        data-confirm="Email {{ people|length }} member(s) asking them to rank before {{ deadline }}?" onsubmit="return confirm(this.dataset.confirm)">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <button>Send reminder to {{ people|length }} member{{ '' if people|length == 1 else 's' }}</button>
   </form>

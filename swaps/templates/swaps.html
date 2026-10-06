@@ -22,7 +22,7 @@ still be swapped are shown below.</p>
     in exchange for your place at
     <b>{{ s['to_formal']['host_college'] }}</b> ({{ s['to_formal']['dt'] }}).
     <form class="inline" method="post" action="/swaps/{{ s['id'] }}/accept"
-          onsubmit="return confirm('Accept this swap? Your places will be exchanged immediately.')">
+          data-confirm="Accept this swap? Your places will be exchanged immediately." onsubmit="return confirm(this.dataset.confirm)">
       <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
       <button class="small">Accept</button>
     </form>

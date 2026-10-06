@@ -26,7 +26,7 @@
     <td>
       {% if cancellable[a['id']] %}
       <form class="inline" method="post" action="/cancel/{{ a['id'] }}"
-            onsubmit="return confirm('{% if will_charge[a['id']] %}This is within {{ charge_h }} hours of the formal — cancelling means you WILL be charged for the swap. Cancel anyway?{% else %}Cancel your place at {{ a['host_college'] }}? It will be offered to others.{% endif %}')">
+            data-confirm="{% if will_charge[a['id']] %}This is within {{ charge_h }} hours of the formal — cancelling means you WILL be charged for the swap. Cancel anyway?{% else %}Cancel your place at {{ a['host_college'] }}? It will be offered to others.{% endif %}" onsubmit="return confirm(this.dataset.confirm)">
         <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
         <button class="small danger">Cancel{% if will_charge[a['id']] %} (charged){% endif %}</button>
       </form>
@@ -55,7 +55,7 @@ If you need to cancel within {{ cutoff_h }} hours of a formal, let
   <details>
     <summary style="cursor:pointer;color:#003b6f">Name spelled wrong? Fix it (you can do this once)</summary>
     <form method="post" action="/account/name"
-          onsubmit="return confirm('Save this name? You can only change it once.')">
+          data-confirm="Save this name? You can only change it once." onsubmit="return confirm(this.dataset.confirm)">
       <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
       <label>First name</label><input type="text" name="first_name" required maxlength="80" value="{{ user['first_name'] }}">
       <label>Last name</label><input type="text" name="last_name" required maxlength="80" value="{{ user['last_name'] }}">
@@ -139,7 +139,7 @@ If you need to cancel within {{ cutoff_h }} hours of a formal, let
   preferences, allocations, reviews, photos). This can't be undone; if you lead
   a ballot group it will be disbanded.</p>
   <form method="post" action="/account/delete"
-        onsubmit="return confirm('Permanently delete your account and all your data? This cannot be undone.')">
+        data-confirm="Permanently delete your account and all your data? This cannot be undone." onsubmit="return confirm(this.dataset.confirm)">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <label>Confirm your PIN to delete</label>
     <input type="password" name="pin" inputmode="numeric" pattern="\d{4}" maxlength="4" required style="max-width:8rem">

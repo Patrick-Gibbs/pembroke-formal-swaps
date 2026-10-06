@@ -9,7 +9,7 @@ from ..db import get_db, get_setting, set_setting, audit
 from ..security import (admin_required, client_ip, ip_blocked,
                         lockout_remaining, record_attempt, verify_secret)
 from ..services import (CancelError, ClaimError, auto_subscribe_unmet,
-                        cancel_allocation, claim_seat,
+                        cancel_allocation, claim_seat, pending_holds,
                         free_seats, run_allocation, seat_admin, unseat_admin)
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -57,7 +57,10 @@ def dashboard():
         subs = db.execute("SELECT COUNT(*) n FROM subscriptions WHERE formal_id=?",
                           (f["id"],)).fetchone()["n"]
         stats[f["id"]] = {"active": active, "prefs": prefs, "subs": subs,
-                          "free": free_seats(db, f["id"], f["slots"])}
+                          "free": free_seats(db, f["id"], f["slots"]),
+                          # waiting places not yet open to anyone / to everyone
+                          "held_pri": pending_holds(db, f["id"], priority=True),
+                          "held_all": pending_holds(db, f["id"])}
     users_n = db.execute("SELECT COUNT(*) n FROM users WHERE email_verified=1"
                          ).fetchone()["n"]
     term_now = get_setting(db, "current_term")
@@ -726,10 +729,10 @@ def roster(fid):
                 f"attachment; filename=formal-{fid}-{f['host_college']}.csv"})
     users = db.execute("SELECT id, first_name, last_name, email FROM users "
                        "WHERE email_verified=1 ORDER BY last_name").fetchall()
-    from ..services import pending_holds
     return render_template("admin/roster.html", f=f, rows=rows, users=users,
                            free=free_seats(db, fid, f["slots"]),
-                           held=pending_holds(db, fid))
+                           held=pending_holds(db, fid),
+                           held_pri=pending_holds(db, fid, priority=True))
 
 
 @bp.route("/formals/<int:fid>/add-user", methods=["POST"])
@@ -755,6 +758,23 @@ def add_user(fid):
     except ClaimError as e:
         flash(str(e), "error")
     return redirect(url_for("admin.roster", fid=fid))
+
+
+@bp.route("/formals/<int:fid>/release", methods=["POST"])
+@admin_required
+def release_formal(fid):
+    """Open a formal's waiting places now: to=all or to=noswaps."""
+    from ..services import release_now
+    db = get_db()
+    everyone = request.form.get("to") == "all"
+    n = release_now(db, fid, everyone)
+    if n:
+        flash(f"Released {n} place(s) to {'everyone' if everyone else 'members with no swaps'}"
+              " — matching subscribers are emailed within a minute.", "ok")
+    else:
+        flash("Nothing waiting to release.", "error")
+    back = request.form.get("back") == "dashboard"
+    return redirect(url_for("admin.dashboard") if back else url_for("admin.roster", fid=fid))
 
 
 @bp.route("/allocations/<int:alloc_id>/cancel", methods=["POST"])
