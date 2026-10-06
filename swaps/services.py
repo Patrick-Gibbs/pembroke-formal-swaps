@@ -1027,14 +1027,18 @@ class ClaimError(Exception):
     pass
 
 
-def claim_seat(conn, user_id, formal_id, actor=None):
+def claim_seat(conn, user_id, formal_id, actor=None, override_holds=False):
     """Atomically claim a free seat. BEGIN IMMEDIATE serializes writers, so
     the capacity check + insert are race-free; the partial unique index on
     active (user_id, formal_id) is a second line of defence.
 
     Returns None normally, or, if the host's catering list has already been sent
     and this claim takes a released seat, a dict {replaced, dietary} — the seat's
-    frozen dietary the claimer inherits (the host can't re-cater)."""
+    frozen dietary the claimer inherits (the host can't re-cater).
+
+    override_holds (admin only): may also take a cancelled place that hasn't
+    been publicly released yet (or is in its head-start window). It's marked
+    claimed, so it's never released and nobody is notified about it."""
     with immediate(conn):
         f = conn.execute("SELECT * FROM formals WHERE id=? AND status IN ('open','allocated')",
                          (formal_id,)).fetchone()
@@ -1051,7 +1055,14 @@ def claim_seat(conn, user_id, formal_id, actor=None):
         # Members who missed all allocations get a head start on released seats:
         # during the priority window a released seat is claimable only by them.
         priority = user_missed_all(conn, user_id, f["term"])
-        if free_seats(conn, formal_id, f["slots"], priority=priority) < 1:
+        take_held = False
+        if override_holds:
+            if f["slots"] - active_count(conn, formal_id) < 1:
+                raise ClaimError("Every place at this formal is taken.")
+            # Use a genuinely free place if there is one; otherwise take a
+            # cancelled place that's still waiting to be released.
+            take_held = free_seats(conn, formal_id, f["slots"], priority=priority) < 1
+        elif free_seats(conn, formal_id, f["slots"], priority=priority) < 1:
             if not priority and free_seats(conn, formal_id, f["slots"], priority=True) >= 1:
                 raise ClaimError("This place is in its priority window for members "
                                  "who missed out — it opens to everyone shortly.")
@@ -1062,11 +1073,17 @@ def claim_seat(conn, user_id, formal_id, actor=None):
         alloc_id = cur.lastrowid
         # Consume one released seat now available to this claimer, if any (a
         # seat may also be free simply because the ballot didn't fill it).
-        avail = "release_at" if priority else "COALESCE(general_at, release_at)"
-        row = conn.execute(
-            f"SELECT id, orig_name, orig_dietary FROM released_slots "  # noqa: S608
-            f"WHERE formal_id=? AND claimed_by IS NULL AND {avail} <= ? "
-            f"ORDER BY release_at LIMIT 1", (formal_id, utcnow_str())).fetchone()
+        if take_held:   # any unclaimed released place, soonest-due first
+            row = conn.execute(
+                "SELECT id, orig_name, orig_dietary FROM released_slots WHERE "
+                "formal_id=? AND claimed_by IS NULL ORDER BY release_at LIMIT 1",
+                (formal_id,)).fetchone()
+        else:
+            avail = "release_at" if priority else "COALESCE(general_at, release_at)"
+            row = conn.execute(
+                f"SELECT id, orig_name, orig_dietary FROM released_slots "  # noqa: S608
+                f"WHERE formal_id=? AND claimed_by IS NULL AND {avail} <= ? "
+                f"ORDER BY release_at LIMIT 1", (formal_id, utcnow_str())).fetchone()
         inherited = None
         if row:
             conn.execute("UPDATE released_slots SET claimed_by=?, claimed_at=? WHERE id=?",

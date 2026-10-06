@@ -226,3 +226,23 @@ def test_cancel_charge_window(db):
         cancel_allocation(db, 1, a3)
     # admin cancellations never charge and ignore the cutoff
     assert cancel_allocation(db, None, a3, actor="admin")["charged"] is False
+
+
+def test_admin_can_fill_unreleased_place(db):
+    add_user(db, 1); add_user(db, 2); add_user(db, 3)
+    add_formal(db, 1, slots=1)
+    claim_seat(db, 1, 1)
+    aid = db.execute("SELECT id FROM allocations WHERE user_id=1").fetchone()["id"]
+    cancel_allocation(db, 1, aid)
+    db.execute("UPDATE released_slots SET release_at=?, general_at=?", (utc(3600), utc(7200)))
+    with pytest.raises(ClaimError):
+        claim_seat(db, 2, 1)                        # members: not released yet
+    claim_seat(db, 2, 1, actor="admin", override_holds=True)
+    assert db.execute("SELECT claimed_by FROM released_slots").fetchone()[0] == 2
+    db.execute("UPDATE released_slots SET release_at=?, general_at=?", (utc(-60), utc(-60)))
+    db.execute("INSERT INTO subscriptions(user_id, formal_id) VALUES (3, 1)")
+    notified = []
+    open_due_releases(db, lambda f, e: notified.extend(e))
+    assert notified == []                           # never announced
+    with pytest.raises(ClaimError):                 # and the formal is now full
+        claim_seat(db, 3, 1, actor="admin", override_holds=True)

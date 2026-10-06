@@ -17,7 +17,7 @@
     <button class="btn">{% if f['catering_sent'] %}✓ List sent · resend to host{% else %}✉ Email host the list now{% endif %}</button>
   </form>
   <a class="btn ghost" href="/admin/">Back</a>
-  &nbsp; Free seats now: <b>{{ free }}</b> / {{ f['slots'] }}
+  &nbsp; Free seats now: <b>{{ free }}</b> / {{ f['slots'] }}{% if held %} <span class="muted">(+{{ held }} cancelled, awaiting public release — you can still fill {{ 'it' if held == 1 else 'these' }} below)</span>{% endif %}
 </p>
 
 <div id="copy-roster" style="display:none">

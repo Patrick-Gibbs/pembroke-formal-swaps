@@ -726,8 +726,10 @@ def roster(fid):
                 f"attachment; filename=formal-{fid}-{f['host_college']}.csv"})
     users = db.execute("SELECT id, first_name, last_name, email FROM users "
                        "WHERE email_verified=1 ORDER BY last_name").fetchall()
+    from ..services import pending_holds
     return render_template("admin/roster.html", f=f, rows=rows, users=users,
-                           free=free_seats(db, fid, f["slots"]))
+                           free=free_seats(db, fid, f["slots"]),
+                           held=pending_holds(db, fid))
 
 
 @bp.route("/formals/<int:fid>/add-user", methods=["POST"])
@@ -735,10 +737,21 @@ def roster(fid):
 def add_user(fid):
     db = get_db()
     uid = int(request.form.get("user_id", "0") or 0)
+    from ..services import free_seats as _free
+    f = db.execute("SELECT slots FROM formals WHERE id=?", (fid,)).fetchone()
+    held = f is not None and _free(db, fid, f["slots"]) < 1
     try:
-        claim_seat(db, uid, fid, actor="admin")
-        audit(db, "admin", "manual_assign", f"user={uid} formal={fid}")
-        flash("User added to formal.", "ok")
+        inherited = claim_seat(db, uid, fid, actor="admin", override_holds=True)
+        audit(db, "admin", "manual_assign",
+              f"user={uid} formal={fid}" + (" (took unreleased place)" if held else ""))
+        msg = "User added to formal."
+        if held:
+            msg += (" They took a cancelled place that hadn't been publicly released "
+                    "yet — that release is cancelled, so nobody will be notified.")
+        if inherited:
+            msg += (f" The host list was already sent, so they take {inherited['replaced']}'s "
+                    f"meal: {inherited['dietary']}.")
+        flash(msg, "ok")
     except ClaimError as e:
         flash(str(e), "error")
     return redirect(url_for("admin.roster", fid=fid))
