@@ -983,11 +983,27 @@ def incoming_participant_delete(pid):
 @admin_required
 def users():
     db = get_db()
+    term = get_setting(db, "current_term")
     rows = db.execute(
         "SELECT u.*, (SELECT COUNT(*) FROM allocations a WHERE a.user_id=u.id AND "
-        "a.status='active') AS places FROM users u ORDER BY u.last_name").fetchall()
-    return render_template("admin/users.html", rows=rows,
+        "a.status='active') AS places, (SELECT COUNT(*) FROM preferences p "
+        "WHERE p.user_id=u.id AND p.term=?) AS ranked FROM users u "
+        "ORDER BY u.last_name", (term,)).fetchall()
+    return render_template("admin/users.html", rows=rows, term=term,
                            default_pin=config.MANUAL_REG_PIN)
+
+
+@bp.route("/users/<int:uid>")
+@admin_required
+def user_detail(uid):
+    from ..services import user_ballot_detail
+    db = get_db()
+    term = get_setting(db, "current_term")
+    d = user_ballot_detail(db, uid, term)
+    if d is None:
+        flash("No such user.", "error")
+        return redirect(url_for("admin.users"))
+    return render_template("admin/user_detail.html", d=d, term=term)
 
 
 @bp.route("/users/register", methods=["POST"])

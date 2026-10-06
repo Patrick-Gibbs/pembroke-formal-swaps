@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+{% set u = d['user'] %}
+<p><a href="/admin/users">← Users</a></p>
+<h1>{{ u['first_name'] }} {{ u['last_name'] }}</h1>
+<p class="muted">{{ u['email'] }} · {{ 'verified' if u['email_verified'] else 'unverified' }}
+{% if u['manual_registered'] %}· registered by you{% endif %} · joined {{ u['created_at'][:10] }}</p>
+
+<div class="card">
+  <h3 style="margin-top:.2rem">Preferences — {{ term or 'no term set' }}</h3>
+  {% if d['covered_by_leader'] %}
+    <p class="note">In the group <b>{{ d['group']['party_name'] or 'Group #' ~ d['group']['id'] }}</b>,
+    led by {{ d['group']['first_name'] }} {{ d['group']['last_name'] }}. The ballot uses the
+    <b>leader's</b> ranking for the whole group, shown here.</p>
+    {% set shown = d['leader_ranking'] %}
+  {% else %}
+    {% set shown = d['own_ranking'] %}
+    {% if d['group'] %}<p class="muted">
+      {% if d['group']['leader_user_id'] == u['id'] %}Leads the group
+        <b>{{ d['group']['party_name'] or 'Group #' ~ d['group']['id'] }}</b> — this ranking covers its members.
+      {% else %}Invited to the group led by {{ d['group']['first_name'] }} {{ d['group']['last_name'] }}
+        ({{ d['group']['status'] }}) — not yet covered by it.{% endif %}</p>{% endif %}
+  {% endif %}
+  {% if shown %}
+  <table>
+    <tr><th>#</th><th>Formal</th><th>Date</th></tr>
+    {% for r in shown %}<tr><td>{{ r['rank'] }}</td><td>{{ r['host_college'] }}</td><td>{{ r['dt'] }}</td></tr>{% endfor %}
+  </table>
+  {% else %}
+  <p><b>No formals ranked</b>{% if d['covered_by_leader'] %} by the group leader yet{% endif %}.</p>
+  {% endif %}
+  <p class="muted">Max formals they're happy to be assigned: <b>{{ d['cap'] }}</b>
+  {% if d['covered_by_leader'] %}(the leader's limit){% endif %}</p>
+  {% if d['covered_by_leader'] and d['own_ranking'] %}
+  <details><summary class="muted" style="cursor:pointer">Their own ranking (ignored while in the group)</summary>
+    <p>{% for r in d['own_ranking'] %}{{ r['rank'] }}. {{ r['host_college'] }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  </details>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-top:.2rem">Places this term</h3>
+  {% if d['allocations'] %}
+  <table>
+    <tr><th>Formal</th><th>Date</th><th>Status</th><th>How</th></tr>
+    {% for a in d['allocations'] %}
+    <tr><td><a href="/admin/formals/{{ a['formal_id'] }}/roster">{{ a['host_college'] }}</a></td>
+        <td>{{ a['dt'] }}</td>
+        <td>{{ a['status'] }}{% if a['cancelled_at'] %} <span class="muted">{{ a['cancelled_at'] }}</span>{% endif %}</td>
+        <td>{{ a['source'] }}{% if a['inherited_from'] %} <span class="muted">(in place of {{ a['inherited_from'] }})</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="muted">None.</p>{% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-top:.2rem">Other details</h3>
+  <p><b>Dietary:</b> {{ ", ".join((u['dietary_flags'].split(',') if u['dietary_flags'] else []) + ([u['dietary_other']] if u['dietary_other'] else [])) or '—' }}</p>
+  <p><b>Notify-me alerts:</b>
+  {% for s in d['subscriptions'] %}{{ s['host_college'] }}{% if not loop.last %} · {% endif %}{% else %}none{% endfor %}</p>
+</div>
+{% endblock %}

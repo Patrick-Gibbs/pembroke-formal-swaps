@@ -395,6 +395,50 @@ def blacklist_and_delete_user(conn, user_id, actor="admin"):
     return photos
 
 
+def user_ballot_detail(conn, user_id, term):
+    """Everything about one member's ballot entry for the admin: their own
+    ranking, group membership (and the leader's ranking that actually applies
+    to accepted members), limit, places and notify-me subscriptions."""
+    u = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+    if u is None:
+        return None
+
+    def ranking(uid):
+        return conn.execute(
+            "SELECT p.rank, f.id, f.host_college, f.dt, f.status FROM preferences p "
+            "JOIN formals f ON f.id=p.formal_id WHERE p.user_id=? AND p.term=? "
+            "ORDER BY p.rank", (uid, term)).fetchall()
+
+    group = conn.execute(
+        "SELECT g.id, g.party_name, g.leader_user_id, m.status, l.first_name, l.last_name "
+        "FROM ballot_group_members m JOIN ballot_groups g ON g.id=m.group_id "
+        "JOIN users l ON l.id=g.leader_user_id "
+        "WHERE m.user_id=? AND g.term=? ORDER BY (m.status='accepted') DESC LIMIT 1",
+        (user_id, term)).fetchone()
+    covered = (group is not None and group["status"] == "accepted"
+               and group["leader_user_id"] != user_id)
+    cap_uid = group["leader_user_id"] if covered else user_id
+    cap = conn.execute("SELECT max_places FROM ballot_caps WHERE user_id=? AND term=?",
+                       (cap_uid, term)).fetchone()
+    return {
+        "user": u,
+        "own_ranking": ranking(user_id),
+        "group": group,
+        "covered_by_leader": covered,
+        "leader_ranking": ranking(group["leader_user_id"]) if covered else [],
+        "cap": cap["max_places"] if cap else 3,
+        "allocations": conn.execute(
+            "SELECT a.status, a.source, a.created_at, a.cancelled_at, a.inherited_from, "
+            "f.id AS formal_id, f.host_college, f.dt FROM allocations a "
+            "JOIN formals f ON f.id=a.formal_id WHERE a.user_id=? AND f.term=? "
+            "ORDER BY f.dt", (user_id, term)).fetchall(),
+        "subscriptions": conn.execute(
+            "SELECT f.host_college, f.dt FROM subscriptions s JOIN formals f "
+            "ON f.id=s.formal_id WHERE s.user_id=? AND f.term=? ORDER BY f.dt",
+            (user_id, term)).fetchall(),
+    }
+
+
 def unranked_members(conn, term):
     """Verified members who haven't ranked any formal for `term` — the people a
     'please rank' reminder should go to. Excluded: accepted non-leader group

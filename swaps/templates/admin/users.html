@@ -15,14 +15,20 @@
     <p><button>Register &amp; email login details</button></p>
   </form>
 </div>
-<table>
-  <tr><th>Name</th><th>Email</th><th>Verified</th><th>Dietary</th><th>Active places</th><th>Joined</th></tr>
+<p><input type="search" id="user-filter" placeholder="Search name or email…"
+   style="width:100%;max-width:26rem;padding:.45rem;border:1px solid #b8c4d0;border-radius:5px;font-size:1rem"
+   oninput="const q=this.value.toLowerCase();document.querySelectorAll('#user-table tr[data-q]').forEach(r=>r.style.display=r.dataset.q.includes(q)?'':'none')"></p>
+<p class="muted">Click a name to see their preferences for {{ term or 'this term' }},
+group, places and alerts.</p>
+<table id="user-table">
+  <tr><th>Name</th><th>Email</th><th>Verified</th><th>Dietary</th><th>Ranked</th><th>Active places</th><th>Joined</th></tr>
   {% for u in rows %}
-  <tr>
-    <td>{{ u['last_name'] }}, {{ u['first_name'] }}</td>
+  <tr data-q="{{ (u['first_name'] ~ ' ' ~ u['last_name'] ~ ' ' ~ u['email'])|lower }}">
+    <td><a href="/admin/users/{{ u['id'] }}">{{ u['last_name'] }}, {{ u['first_name'] }}</a></td>
     <td>{{ u['email'] }}</td>
     <td>{{ '✓' if u['email_verified'] else '—' }}</td>
     <td>{{ ", ".join((u['dietary_flags'].split(',') if u['dietary_flags'] else []) + ([u['dietary_other']] if u['dietary_other'] else [])) }}</td>
+    <td>{{ u['ranked'] or '—' }}</td>
     <td>{{ u['places'] }}</td>
     <td>{{ u['created_at'] }}</td>
   </tr>
