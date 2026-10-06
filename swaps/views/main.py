@@ -300,7 +300,8 @@ def me():
     db = get_db()
     user = current_user()
     allocs = db.execute(
-        "SELECT a.id, a.status, f.host_college, f.dt, f.price, f.id AS formal_id "
+        "SELECT a.id, a.status, a.wine_opt_out, f.host_college, f.dt, f.price, "
+        "f.id AS formal_id, f.wine_fee, f.wine_price, f.catering_sent "
         "FROM allocations a JOIN formals f ON f.id = a.formal_id "
         "WHERE a.user_id=? ORDER BY f.dt", (user["id"],)).fetchall()
     subs = db.execute(
@@ -493,6 +494,30 @@ def account_delete():
     session.clear()
     flash("Your account and personal data have been permanently deleted.", "ok")
     return redirect(url_for("main.index"))
+
+
+@bp.route("/account/wine/<int:alloc_id>", methods=["POST"])
+@login_required
+def account_wine(alloc_id):
+    """Opt in/out of wine for one place, at a formal that charges extra for it.
+    Locked once the host has the final list (it carries the wine numbers)."""
+    db = get_db()
+    a = db.execute(
+        "SELECT a.id, a.user_id, a.status, f.host_college, f.dt, f.wine_fee, "
+        "f.catering_sent FROM allocations a JOIN formals f ON f.id=a.formal_id "
+        "WHERE a.id=?", (alloc_id,)).fetchone()
+    if (a is None or a["user_id"] != current_user()["id"] or a["status"] != "active"
+            or not a["wine_fee"] or hours_until_formal(a["dt"]) <= 0):
+        flash("You can't change wine for that place.", "error")
+    elif a["catering_sent"]:
+        flash(f"{a['host_college']} already has its final list — contact the swaps "
+              "officer to change your wine choice.", "error")
+    else:
+        out = 1 if request.form.get("wine") == "no" else 0
+        db.execute("UPDATE allocations SET wine_opt_out=? WHERE id=?", (out, alloc_id))
+        flash(f"{a['host_college']}: " + ("no wine for you — you won't pay the wine fee."
+              if out else "wine included."), "ok")
+    return redirect(url_for("main.me"))
 
 
 @bp.route("/account/dietary", methods=["POST"])

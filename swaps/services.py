@@ -939,10 +939,10 @@ def accept_swap(conn, req_id, accepting_user):
         _swap_preconditions(conn, r["from_user"], r["from_formal"],
                             r["to_user"], r["to_formal"])
         # Move each place to the other person.
-        conn.execute("UPDATE allocations SET user_id=?, source='swap' "
+        conn.execute("UPDATE allocations SET user_id=?, source='swap', wine_opt_out=0 "
                      "WHERE user_id=? AND formal_id=? AND status='active'",
                      (r["to_user"], r["from_user"], r["from_formal"]))
-        conn.execute("UPDATE allocations SET user_id=?, source='swap' "
+        conn.execute("UPDATE allocations SET user_id=?, source='swap', wine_opt_out=0 "
                      "WHERE user_id=? AND formal_id=? AND status='active'",
                      (r["from_user"], r["to_user"], r["to_formal"]))
         conn.execute("UPDATE swap_requests SET status='accepted', "
@@ -1135,15 +1135,22 @@ def attendee_emails(conn, formal_id):
 def catering_list(conn, formal_id):
     """Active attendees of a formal with resolved dietary (for the host). Each
     row is a dict with first_name, last_name, dietary (a single resolved string
-    that respects a seat's frozen/inherited dietary)."""
+    that respects a seat's frozen/inherited dietary) and wine ("Yes"/"No", or
+    None when the formal has no wine fee)."""
+    wine = conn.execute("SELECT wine_fee FROM formals WHERE id=?",
+                        (formal_id,)).fetchone()
+    wine = bool(wine and wine["wine_fee"])
     rows = conn.execute(
-        "SELECT u.first_name, u.last_name, a.inherited_dietary, u.dietary_flags, "
-        "u.dietary_other FROM allocations a JOIN users u ON u.id = a.user_id "
+        "SELECT u.first_name, u.last_name, a.inherited_dietary, a.wine_opt_out, "
+        "u.dietary_flags, u.dietary_other FROM allocations a "
+        "JOIN users u ON u.id = a.user_id "
         "WHERE a.formal_id=? AND a.status='active' "
         "ORDER BY u.last_name, u.first_name", (formal_id,)).fetchall()
+    # 'wine' is None when the formal has no wine fee, else "Yes"/"No".
     return [{"first_name": r["first_name"], "last_name": r["last_name"],
              "dietary": resolve_dietary(r["inherited_dietary"], r["dietary_flags"],
-                                        r["dietary_other"])}
+                                        r["dietary_other"]),
+             "wine": ("No" if r["wine_opt_out"] else "Yes") if wine else None}
             for r in rows]
 
 

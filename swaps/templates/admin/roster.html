@@ -29,32 +29,34 @@
         <button class="small">Release to all ({{ held }})</button>
       </form>{% endif %}
   <a class="btn ghost" href="/admin/">Back</a>
-  &nbsp; Free seats now: <b>{{ free }}</b> / {{ f['slots'] }}{% if held %} <span class="muted">(+{{ held }} cancelled, awaiting public release — you can still fill {{ 'it' if held == 1 else 'these' }} below)</span>{% endif %}
+  &nbsp; Free seats now: <b>{{ free }}</b> / {{ f['slots'] }}{% if f['wine_fee'] %} &nbsp; 🍷 Wine{% if f['wine_price'] %} ({{ f['wine_price'] }}){% endif %}: <b>{{ wine_yes }}</b> yes, <b>{{ wine_no }}</b> opted out{% endif %}{% if held %} <span class="muted">(+{{ held }} cancelled, awaiting public release — you can still fill {{ 'it' if held == 1 else 'these' }} below)</span>{% endif %}
 </p>
 
 <div id="copy-roster" style="display:none">
   <p><b>{{ f['host_college'] }} formal — {{ f['dt'] }}{% if f['price'] %} — {{ f['price'] }}{% endif %}
   — {{ rows|selectattr('status', 'equalto', 'active')|list|length }} attendee(s)</b></p>
   <table border="1" cellpadding="6" style="border-collapse:collapse;border:1px solid #999;font-family:Arial,sans-serif;font-size:13px">
-    <tr style="background:#eef3f8"><th>First name</th><th>Last name</th><th>Email</th><th>Dietary requirements</th></tr>
+    <tr style="background:#eef3f8"><th>First name</th><th>Last name</th><th>Email</th><th>Dietary requirements</th>{% if f['wine_fee'] %}<th>Wine</th>{% endif %}</tr>
     {% for r in rows if r['status'] == 'active' %}
     <tr>
       <td>{{ r['first_name'] }}</td>
       <td>{{ r['last_name'] }}</td>
       <td>{{ r['email'] }}</td>
       <td>{{ r['dietary'] }}</td>
+      {% if f['wine_fee'] %}<td>{{ 'No' if r['wine_opt_out'] else 'Yes' }}</td>{% endif %}
     </tr>
     {% endfor %}
   </table>
 </div>
 <table>
-  <tr><th>Name</th><th>Email</th><th>Dietary</th><th>Status</th><th>Source</th><th></th></tr>
+  <tr><th>Name</th><th>Email</th><th>Dietary</th>{% if f['wine_fee'] %}<th>Wine</th>{% endif %}<th>Status</th><th>Source</th><th></th></tr>
   {% for r in rows %}
   <tr>
     <td>{{ r['first_name'] }} {{ r['last_name'] }}
       {% if r['inherited_from'] %}<br><span class="muted">in place of {{ r['inherited_from'] }} (fixed meal)</span>{% endif %}</td>
     <td>{{ r['email'] }}</td>
     <td>{{ r['dietary'] }}</td>
+    {% if f['wine_fee'] %}<td>{{ ('No' if r['wine_opt_out'] else 'Yes') if r['status'] == 'active' else '' }}</td>{% endif %}
     <td>{{ r['status'] }}</td>
     <td>{{ r['source'] }}</td>
     <td>{% if r['status'] == 'active' %}

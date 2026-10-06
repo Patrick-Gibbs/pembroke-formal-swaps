@@ -35,6 +35,8 @@ def init_db(db_path=None):
                      ("review_sent", "INTEGER NOT NULL DEFAULT 0"),
                      ("catering_sent", "INTEGER NOT NULL DEFAULT 0"),
                      ("catering_lead_days", "INTEGER"),
+                     ("wine_fee", "INTEGER NOT NULL DEFAULT 0"),
+                     ("wine_price", "TEXT NOT NULL DEFAULT ''"),
                      ("host_name", "TEXT NOT NULL DEFAULT ''"),
                      ("host_email", "TEXT NOT NULL DEFAULT ''"),
                      ("host_phone", "TEXT NOT NULL DEFAULT ''"),
@@ -51,6 +53,9 @@ def init_db(db_path=None):
         conn.execute("ALTER TABLE allocations ADD COLUMN inherited_dietary TEXT")
     if "inherited_from" not in acols:
         conn.execute("ALTER TABLE allocations ADD COLUMN inherited_from TEXT")
+    if "wine_opt_out" not in acols:
+        conn.execute("ALTER TABLE allocations ADD COLUMN wine_opt_out "
+                     "INTEGER NOT NULL DEFAULT 0")
     gcols = {r["name"] for r in conn.execute("PRAGMA table_info(ballot_groups)")}
     if "party_name" not in gcols:
         conn.execute("ALTER TABLE ballot_groups ADD COLUMN party_name "

@@ -18,6 +18,12 @@
   <input type="datetime-local" name="dt" required value="{{ (f['dt'].replace(' ', 'T')) if f else '' }}">
   <label>Price info</label>
   <input type="text" name="price" placeholder="e.g. £16.50, pay host college" value="{{ f['price'] if f else '' }}">
+  <label style="font-weight:normal"><input type="checkbox" name="wine_fee"
+    {% if f and f['wine_fee'] %}checked{% endif %}> <b>Additional fee for wine</b>
+    — members can opt out of wine under My formals</label>
+  <label>Wine fee (optional, e.g. £6)</label>
+  <input type="text" name="wine_price" maxlength="60" style="max-width:12rem"
+         value="{{ f['wine_price'] if f else '' }}">
   <label>Description (shown to members when they rank — what the ticket includes)</label>
   <textarea name="description" rows="3" style="width:100%;max-width:26rem;padding:.45rem;border:1px solid #b8c4d0;border-radius:5px;font-size:1rem" placeholder="e.g. 3-course dinner with wine and port; black tie; drinks reception beforehand">{{ f['description'] if f else '' }}</textarea>
   <label>Location (goes in the calendar invite)</label>

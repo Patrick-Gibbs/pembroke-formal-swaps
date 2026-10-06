@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS formals (
     review_sent INTEGER NOT NULL DEFAULT 0,     -- 9pm review request done
     catering_sent INTEGER NOT NULL DEFAULT 0,   -- host catering list emailed
     catering_lead_days INTEGER,                 -- days before to email host (null=default 7)
+    wine_fee INTEGER NOT NULL DEFAULT 0,        -- 1 = wine is an additional fee
+    wine_price TEXT NOT NULL DEFAULT '',        -- e.g. '£6' (optional)
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -55,6 +57,7 @@ CREATE TABLE IF NOT EXISTS allocations (
     source TEXT NOT NULL DEFAULT 'ballot',   -- ballot | claim | admin
     inherited_dietary TEXT,                  -- frozen dietary if claimed after list sent
     inherited_from TEXT,                     -- name of the person this seat replaced
+    wine_opt_out INTEGER NOT NULL DEFAULT 0, -- 1 = no wine (formals with a wine fee)
     notified INTEGER NOT NULL DEFAULT 0,     -- result email sent (at publish)
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     cancelled_at TEXT

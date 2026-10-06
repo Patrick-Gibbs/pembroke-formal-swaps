@@ -15,14 +15,27 @@
 
 {% if not allocs %}<p>No places yet. <a href="/rank">Rank formals</a> before the ballot closes, or claim a free place from the <a href="/">home page</a>.</p>{% endif %}
 {% if allocs %}
+{% set any_wine = allocs|selectattr('wine_fee')|selectattr('status', 'equalto', 'active')|list %}
 <table>
-  <tr><th>College</th><th>Date &amp; time</th><th>Price</th><th>Status</th><th></th></tr>
+  <tr><th>College</th><th>Date &amp; time</th><th>Price</th><th>Status</th>{% if any_wine %}<th>Wine</th>{% endif %}<th></th></tr>
   {% for a in allocs %}
   <tr>
     <td>{{ a['host_college'] }}</td>
     <td>{{ a['dt'] }}</td>
     <td>{{ a['price'] }}</td>
     <td>{{ a['status'] }}</td>
+    {% if any_wine %}<td>
+      {% if a['wine_fee'] and a['status'] == 'active' %}
+        {{ 'No wine' if a['wine_opt_out'] else '🍷 Wine' }}{% if a['wine_price'] %} <span class="muted">({{ a['wine_price'] }} extra)</span>{% endif %}
+        {% if past[a['id']] %}
+        {% elif a['catering_sent'] %}<br><span class="muted">list sent — ask <a href="/officer">Patrick</a> to change</span>
+        {% else %}
+        <form class="inline" method="post" action="/account/wine/{{ a['id'] }}">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="wine" value="{{ 'yes' if a['wine_opt_out'] else 'no' }}">
+          <button class="small ghost">{{ 'Opt back in' if a['wine_opt_out'] else 'Opt out' }}</button>
+        </form>{% endif %}
+      {% endif %}</td>{% endif %}
     <td>
       {% if cancellable[a['id']] %}
       <form class="inline" method="post" action="/cancel/{{ a['id'] }}"

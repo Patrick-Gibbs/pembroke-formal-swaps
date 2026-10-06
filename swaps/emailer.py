@@ -326,19 +326,24 @@ def catering_email(to, cc, formal, rows, admin_name=""):
     else:
         greeting = f"Dear {formal['host_college']} formals team,"
     signoff = f"— {admin_name}" if admin_name else "— Pembroke Formal Swaps"
+    td = "<td style='border:1px solid #ccc;padding:4px 8px'>"
+    th = "<th style='border:1px solid #ccc;padding:4px 8px;text-align:left'>"
+    wine = any(r.get("wine") is not None for r in rows)
     body = "".join(
-        f"<tr><td style='border:1px solid #ccc;padding:4px 8px'>{r['first_name']} {r['last_name']}</td>"
-        f"<td style='border:1px solid #ccc;padding:4px 8px'>{r['dietary']}</td></tr>"
+        f"<tr>{td}{r['first_name']} {r['last_name']}</td>{td}{r['dietary']}</td>"
+        + (f"{td}{r['wine']}</td>" if wine else "") + "</tr>"
         for r in rows)
     tally = {}
     for r in rows:
         if r["dietary"] and r["dietary"] != "—":
             tally[r["dietary"]] = tally.get(r["dietary"], 0) + 1
     summary = ", ".join(f"{d} ×{n}" for d, n in sorted(tally.items())) or "none noted"
+    if wine:
+        yes = sum(1 for r in rows if r.get("wine") == "Yes")
+        summary += f". Wine: {yes} yes, {len(rows) - yes} no"
     table = ("<table style='border-collapse:collapse'>"
-             "<tr><th style='border:1px solid #ccc;padding:4px 8px;text-align:left'>Name</th>"
-             "<th style='border:1px solid #ccc;padding:4px 8px;text-align:left'>"
-             "Dietary requirements</th></tr>" + body + "</table>")
+             f"<tr>{th}Name</th>{th}Dietary requirements</th>"
+             + (f"{th}Wine</th>" if wine else "") + "</tr>" + body + "</table>")
     subject, html = _render_template("catering", {
         "greeting": greeting, "host_college": formal["host_college"],
         "dt": formal["dt"], "count": len(rows), "table": table,

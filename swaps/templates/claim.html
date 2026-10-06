@@ -4,6 +4,8 @@
 <div class="card">
   <p><b>{{ formal['host_college'] }}</b> — {{ formal['dt'] }}
   {% if formal['price'] %}&middot; {{ formal['price'] }}{% endif %}</p>
+  {% if formal['wine_fee'] %}<p class="muted">🍷 Wine is an extra fee{% if formal['wine_price'] %} ({{ formal['wine_price'] }}){% endif %}.
+  You'll be down for wine unless you opt out under My formals.</p>{% endif %}
   <p>Free places right now: <b>{{ free }}</b></p>
   {% if free > 0 %}
   {% if priority %}<p class="muted">You missed out in the ballot, so you get a
