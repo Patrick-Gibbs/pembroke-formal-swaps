@@ -35,6 +35,7 @@ def init_db(db_path=None):
                      ("review_sent", "INTEGER NOT NULL DEFAULT 0"),
                      ("catering_sent", "INTEGER NOT NULL DEFAULT 0"),
                      ("catering_lead_days", "INTEGER"),
+                     ("catering_at", "TEXT"),
                      ("wine_fee", "INTEGER NOT NULL DEFAULT 0"),
                      ("wine_price", "TEXT NOT NULL DEFAULT ''"),
                      ("host_name", "TEXT NOT NULL DEFAULT ''"),

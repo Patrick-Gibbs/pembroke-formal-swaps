@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS formals (
     reminder_sent INTEGER NOT NULL DEFAULT 0,   -- 9am day-of email done
     review_sent INTEGER NOT NULL DEFAULT 0,     -- 9pm review request done
     catering_sent INTEGER NOT NULL DEFAULT 0,   -- host catering list emailed
-    catering_lead_days INTEGER,                 -- days before to email host (null=default 7)
+    catering_lead_days INTEGER,                 -- legacy: days before to email host (null=default 7)
+    catering_at TEXT,                           -- when to email host (overrides lead days)
     wine_fee INTEGER NOT NULL DEFAULT 0,        -- 1 = wine is an additional fee
     wine_price TEXT NOT NULL DEFAULT '',        -- e.g. '£6' (optional)
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
