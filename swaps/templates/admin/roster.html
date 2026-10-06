@@ -71,13 +71,16 @@
 </table>
 <div class="card">
   <h3>Email all attendees</h3>
-  <form method="post" action="/admin/formals/{{ f['id'] }}/email-all"
+  <form method="post" action="/admin/formals/{{ f['id'] }}/email-all" enctype="multipart/form-data"
         data-confirm="Send this email to every active attendee of this formal?" onsubmit="return confirm(this.dataset.confirm)">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <label>Subject</label>
     <input type="text" name="subject" required placeholder="e.g. {{ f['host_college'] }} formal — meeting point update">
     <label>Message</label>
     <textarea name="body" rows="5" required style="width:100%;max-width:32rem;padding:.45rem;border:1px solid #b8c4d0;border-radius:5px" placeholder="Plain text; blank lines make paragraphs."></textarea>
+    <label>Photos (optional, up to 6)</label>
+    <input type="file" name="photos" accept="image/*" multiple>
+    <p class="muted">Shown below the message and attached; large photos are shrunk automatically.</p>
     <p><button>Send to all active attendees</button></p>
   </form>
 </div>

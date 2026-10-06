@@ -802,6 +802,34 @@ def cancel_alloc(alloc_id):
     return redirect(request.referrer or url_for("admin.dashboard"))
 
 
+EMAIL_PHOTO_MAX = 6       # per email; each is downscaled so the total stays small
+EMAIL_PHOTO_DIM = 1600    # longest edge, px
+
+
+def _email_photos(files):
+    """Uploaded images -> [(filename, jpeg_bytes, content_id)] for inline use in
+    an email, EXIF-rotated and downscaled. Empty file inputs are skipped.
+    Returns None if any file isn't a readable image or there are too many."""
+    import io
+    from PIL import Image, ImageOps, UnidentifiedImageError
+    files = [f for f in files if f and f.filename]
+    if len(files) > EMAIL_PHOTO_MAX:
+        return None
+    out = []
+    for i, file in enumerate(files, 1):
+        try:
+            img = ImageOps.exif_transpose(Image.open(file.stream))
+        except (UnidentifiedImageError, OSError):
+            return None
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        img.thumbnail((EMAIL_PHOTO_DIM, EMAIL_PHOTO_DIM))
+        buf = io.BytesIO()
+        img.save(buf, "JPEG", quality=82, optimize=True)
+        out.append((f"photo{i}.jpg", buf.getvalue(), f"photo{i}"))
+    return out
+
+
 @bp.route("/formals/<int:fid>/email-all", methods=["POST"])
 @admin_required
 def email_all(fid):
@@ -821,13 +849,21 @@ def email_all(fid):
         flash("Subject and message are both required.", "error")
         return redirect(url_for("admin.roster", fid=fid))
     html = "".join(f"<p>{line}</p>" for line in body.splitlines() if line.strip())
+    photos = _email_photos(request.files.getlist("photos"))
+    if photos is None:
+        flash(f"Couldn't read one of the photos (JPEG/PNG only, at most "
+              f"{EMAIL_PHOTO_MAX} photos) — nothing was sent.", "error")
+        return redirect(url_for("admin.roster", fid=fid))
+    html += "".join(f'<p><img src="cid:{cid}" alt="" style="max-width:100%;'
+                    f'height:auto"></p>' for _, _, cid in photos)
     recipients = attendee_emails(db, fid)
     audit(db, "admin", "email_all",
-          f"formal={fid} subject={subject!r} recipients={len(recipients)}")
+          f"formal={fid} subject={subject!r} recipients={len(recipients)} "
+          f"photos={len(photos)}")
 
     def deliver():
         for email in recipients:
-            emailer.send(email, subject, html)
+            emailer.send(email, subject, html, attachments=photos or None)
 
     threading.Thread(target=deliver, daemon=True).start()
     flash(f"Email queued to {len(recipients)} attendee(s) of the "
