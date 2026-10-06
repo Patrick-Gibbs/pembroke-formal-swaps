@@ -7,6 +7,7 @@ from flask import (Blueprint, abort, flash, redirect, render_template, request,
                    send_from_directory, url_for)
 
 from .. import chatbot, config
+from ..dates import uk_datetime
 from ..db import get_db, get_setting, audit
 from ..security import (chat_global_limited, chat_rate_limited, client_ip,
                         current_user, login_required)
@@ -656,7 +657,7 @@ def swaps_holdings():
         return jsonify([])
     rows = _swappable_holdings(db, other)
     return jsonify([{"formal_id": r["formal_id"],
-                     "label": f"{r['host_college']} — {r['dt']}"} for r in rows])
+                     "label": f"{r['host_college']} — {uk_datetime(r['dt'])}"} for r in rows])
 
 
 @bp.route("/swaps/propose", methods=["POST"])

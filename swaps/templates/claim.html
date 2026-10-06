@@ -2,7 +2,7 @@
 {% block content %}
 <h1>Claim a place — {{ formal['host_college'] }}</h1>
 <div class="card">
-  <p><b>{{ formal['host_college'] }}</b> — {{ formal['dt'] }}
+  <p><b>{{ formal['host_college'] }}</b> — {{ formal['dt'] | uk_datetime }}
   {% if formal['price'] %}&middot; {{ formal['price'] }}{% endif %}</p>
   {% if formal['wine_fee'] %}<p class="muted">🍷 Wine is an extra fee{% if formal['wine_price'] %} ({{ formal['wine_price'] }}){% endif %}.
   You'll be down for wine unless you opt out under My formals.</p>{% endif %}

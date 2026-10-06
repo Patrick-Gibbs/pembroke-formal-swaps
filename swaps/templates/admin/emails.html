@@ -11,7 +11,7 @@ Latest 300 attempts shown.</p>
   <tr><th>When (UTC)</th><th>To</th><th>Subject</th><th>Status</th></tr>
   {% for r in rows %}
   <tr{% if not r['ok'] %} style="background:#fdecea"{% endif %}>
-    <td style="white-space:nowrap">{{ r['at'] }}</td>
+    <td style="white-space:nowrap">{{ r['at'] | uk_datetime }}</td>
     <td>{{ r['recipient'] }}</td>
     <td>{{ r['subject'] }}</td>
     <td>{% if r['ok'] %}✓ {{ r['error'] or 'OK' }}{% else %}<b style="color:var(--err)">✗ {{ r['error'] }}</b>{% endif %}</td>

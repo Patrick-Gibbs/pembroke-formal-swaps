@@ -28,7 +28,7 @@
 
 {% for s in swaps %}
 <div class="card">
-  <h2>{{ s['guest_college'] }} — {{ s['dt'] }}</h2>
+  <h2>{{ s['guest_college'] }} — {{ s['dt'] | uk_datetime }}</h2>
   <form method="post" action="/admin/incoming/{{ s['id'] }}/update">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <table>
@@ -55,7 +55,7 @@
     <button class="small ghost" type="button" onclick="copyTable('copy-swap-{{ s['id'] }}', this)">📋 Copy for email</button>
   </h3>
   <div id="copy-swap-{{ s['id'] }}" style="display:none">
-    <p><b>{{ s['guest_college'] }} @ Pembroke — {{ s['dt'] }} —
+    <p><b>{{ s['guest_college'] }} @ Pembroke — {{ s['dt'] | uk_datetime }} —
     {{ participants[s['id']]|length }} guest(s)</b></p>
     <table border="1" cellpadding="6" style="border-collapse:collapse;border:1px solid #999;font-family:Arial,sans-serif;font-size:13px">
       <tr style="background:#eef3f8"><th>First name</th><th>Last name</th><th>Dietary requirements</th><th>Notes</th></tr>

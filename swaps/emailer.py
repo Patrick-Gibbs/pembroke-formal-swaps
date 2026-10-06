@@ -7,6 +7,7 @@ import time
 import requests
 
 from . import config
+from .dates import uk_datetime
 
 log = logging.getLogger("swaps.email")
 
@@ -86,7 +87,7 @@ def send(to, subject, html, attachments=None, cc=None):
 
 
 def _formal_block(f):
-    parts = [f"<p><b>{f['host_college']}</b> — {f['dt']}"]
+    parts = [f"<p><b>{f['host_college']}</b> — {uk_datetime(f['dt'])}"]
     if f["price"]:
         parts.append(f"<br>Price: {f['price']}")
     if f["location"]:
@@ -247,7 +248,7 @@ def group_invite_email(to, leader_name, term, link):
 
 def slot_open_email(to, formal, link):
     subject, body = _render_template("slot_open", {
-        "host_college": formal["host_college"], "dt": formal["dt"], "link": link})
+        "host_college": formal["host_college"], "dt": uk_datetime(formal["dt"]), "link": link})
     return send(to, subject, body)
 
 
@@ -283,7 +284,7 @@ def no_place_email(to, term):
 
 def reminder_email(to, formal, ics_files):
     subject, body = _render_template("reminder", {
-        "host_college": formal["host_college"], "dt": formal["dt"],
+        "host_college": formal["host_college"], "dt": uk_datetime(formal["dt"]),
         "time": formal["dt"][11:16], "formal_block": _formal_block(formal),
         "review_link": f"{config.SITE_URL}/review/{formal['id']}"})
     return send(to, subject, body, attachments=ics_files)
@@ -294,8 +295,8 @@ def swap_proposed_email(to, proposer_name, offer_formal, want_formal, link):
         to, f"{proposer_name} wants to swap formals with you",
         f"<p><b>{proposer_name}</b> would like to swap places with you:</p>"
         f"<p>They give you their place at <b>{offer_formal['host_college']}</b> "
-        f"({offer_formal['dt']}) in exchange for your place at "
-        f"<b>{want_formal['host_college']}</b> ({want_formal['dt']}).</p>"
+        f"({uk_datetime(offer_formal['dt'])}) in exchange for your place at "
+        f"<b>{want_formal['host_college']}</b> ({uk_datetime(want_formal['dt'])}).</p>"
         f"<p><a href=\"{link}\">Review the request</a> to accept or decline.</p>")
 
 
@@ -304,8 +305,8 @@ def swap_accepted_email(to, other_name, now_attending, gave_up):
         to, f"Swap confirmed — you're now at {now_attending['host_college']}",
         f"<p>Your swap with <b>{other_name}</b> is done.</p>"
         f"<p>You now have a place at <b>{now_attending['host_college']}</b> "
-        f"({now_attending['dt']}), and gave up your place at "
-        f"<b>{gave_up['host_college']}</b> ({gave_up['dt']}).</p>"
+        f"({uk_datetime(now_attending['dt'])}), and gave up your place at "
+        f"<b>{gave_up['host_college']}</b> ({uk_datetime(gave_up['dt'])}).</p>"
         f"<p>See your places at <a href=\"{config.SITE_URL}/me\">{config.SITE_URL}/me</a>.</p>")
 
 
@@ -346,16 +347,16 @@ def catering_email(to, cc, formal, rows, admin_name=""):
              + (f"{th}Wine</th>" if wine else "") + "</tr>" + body + "</table>")
     subject, html = _render_template("catering", {
         "greeting": greeting, "host_college": formal["host_college"],
-        "dt": formal["dt"], "count": len(rows), "table": table,
+        "dt": uk_datetime(formal["dt"]), "count": len(rows), "table": table,
         "summary": summary, "signoff": signoff})
     return send(to, subject, html, cc=cc)
 
 
 def claim_inherited_email(to, formal, replaced, dietary):
     return send(
-        to, f"You're in — {formal['host_college']} formal on {formal['dt']}",
+        to, f"You're in — {formal['host_college']} formal on {uk_datetime(formal['dt'])}",
         f"<p>You've claimed a place at the <b>{formal['host_college']}</b> formal "
-        f"on <b>{formal['dt']}</b>, in place of <b>{replaced}</b>.</p>"
+        f"on <b>{uk_datetime(formal['dt'])}</b>, in place of <b>{replaced}</b>.</p>"
         f"<p>The host college has already been given the final catering list, so "
         f"your meal is fixed to the one ordered for this place:</p>"
         f"<p><b>Dietary / meal: {dietary}</b></p>"

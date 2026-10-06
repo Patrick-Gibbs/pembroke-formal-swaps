@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Roster — {{ f['host_college'] }} ({{ f['dt'] }})</h1>
+<h1>Roster — {{ f['host_college'] }} ({{ f['dt'] | uk_datetime }})</h1>
 {% if f['host_name'] or f['host_email'] or f['host_phone'] %}
 <p class="note">Host contact (internal):
   {% if f['host_name'] %}<b>{{ f['host_name'] }}</b>{% endif %}
@@ -33,7 +33,7 @@
 </p>
 
 <div id="copy-roster" style="display:none">
-  <p><b>{{ f['host_college'] }} formal — {{ f['dt'] }}{% if f['price'] %} — {{ f['price'] }}{% endif %}
+  <p><b>{{ f['host_college'] }} formal — {{ f['dt'] | uk_datetime }}{% if f['price'] %} — {{ f['price'] }}{% endif %}
   — {{ rows|selectattr('status', 'equalto', 'active')|list|length }} attendee(s)</b></p>
   <table border="1" cellpadding="6" style="border-collapse:collapse;border:1px solid #999;font-family:Arial,sans-serif;font-size:13px">
     <tr style="background:#eef3f8"><th>First name</th><th>Last name</th><th>Email</th><th>Dietary requirements</th>{% if f['wine_fee'] %}<th>Wine</th>{% endif %}</tr>

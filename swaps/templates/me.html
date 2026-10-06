@@ -21,7 +21,7 @@
   {% for a in allocs %}
   <tr>
     <td>{{ a['host_college'] }}</td>
-    <td>{{ a['dt'] }}</td>
+    <td>{{ a['dt'] | uk_datetime }}</td>
     <td>{{ a['price'] }}</td>
     <td>{{ a['status'] }}</td>
     {% if any_wine %}<td>
@@ -121,7 +121,7 @@ If you need to cancel within {{ cutoff_h }} hours of a formal, let
   <tr><th>College</th><th>Date</th><th></th></tr>
   {% for s in subs %}
   <tr>
-    <td>{{ s['host_college'] }}</td><td>{{ s['dt'] }}</td>
+    <td>{{ s['host_college'] }}</td><td>{{ s['dt'] | uk_datetime }}</td>
     <td><form class="inline" method="post" action="/formals/{{ s['formal_id'] }}/unsubscribe">
       <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
       <button class="small ghost">Unsubscribe</button></form></td>
@@ -134,7 +134,7 @@ If you need to cancel within {{ cutoff_h }} hours of a formal, let
 {% if reviews %}
 {% for r in reviews %}
 <div class="card">
-  <p><b>{{ r['host_college'] }}</b> — {{ r['dt'][:10] }}
+  <p><b>{{ r['host_college'] }}</b> — {{ r['dt'] | uk_date }}
   <span style="color:#c9a227">{% for i in range(r['course_stars']) %}★{% endfor %}</span><span style="color:#8e9aa8">{% for i in range(r['vibe_stars']) %}★{% endfor %}</span>
   <span class="muted">({{ r['course_stars'] + r['vibe_stars'] }}/5)</span></p>
   {% if r['review'] %}<p>{{ r['review'] }}</p>{% endif %}

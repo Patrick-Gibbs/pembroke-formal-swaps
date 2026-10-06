@@ -65,7 +65,7 @@
     <tr><th>Email</th><th>Blacklisted</th><th></th></tr>
     {% for b in blacklist %}
     <tr><td>{{ b['email'] }}{% if b['key'].startswith('crsid:') %} <span class="muted">(any {{ b['key'][6:] }}@…cam.ac.uk)</span>{% endif %}</td>
-        <td>{{ b['created_at'] }}</td>
+        <td>{{ b['created_at'] | uk_datetime }}</td>
         <td><form class="inline" method="post" action="/admin/members/unblacklist"
                   data-confirm="Allow {{ b['email'] }} to register again?" onsubmit="return confirm(this.dataset.confirm)">
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">

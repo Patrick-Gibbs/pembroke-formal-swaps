@@ -28,7 +28,7 @@ want it most than it can seat).</p>
   <tr><th>Formal</th><th>Free seats</th><th>1st-choice demand</th><th>Pressure</th>
       <th>Ranked by</th><th>Avg filled</th><th>Full in</th></tr>
   {% for f in sim['per_formal'] %}
-  <tr><td>{{ f['college'] }} <span class="muted">{{ f['dt'] }}</span></td>
+  <tr><td>{{ f['college'] }} <span class="muted">{{ f['dt'] | uk_datetime }}</span></td>
       <td>{{ f['seats'] }}</td><td>{{ f['first_demand'] }}</td>
       <td>{% if f['pressure'] is none %}—{% else %}<b>{{ '%.2f'|format(f['pressure']) }}×</b>{% endif %}</td>
       <td>{{ f['rankers'] }}</td><td>{{ f['mean_filled'] }}</td>

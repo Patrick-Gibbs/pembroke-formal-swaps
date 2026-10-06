@@ -30,7 +30,7 @@ group, places and alerts.</p>
     <td>{{ ", ".join((u['dietary_flags'].split(',') if u['dietary_flags'] else []) + ([u['dietary_other']] if u['dietary_other'] else [])) }}</td>
     <td>{{ u['ranked'] or '—' }}</td>
     <td>{{ u['places'] }}</td>
-    <td>{{ u['created_at'] }}</td>
+    <td>{{ u['created_at'] | uk_datetime }}</td>
   </tr>
   {% endfor %}
 </table>

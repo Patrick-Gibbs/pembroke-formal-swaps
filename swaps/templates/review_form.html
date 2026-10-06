@@ -2,7 +2,7 @@
 {% block title %}Review — Pembroke Formal Swaps{% endblock %}
 {% block content %}
 <h1>Rate the {{ f['host_college'] }} formal</h1>
-<p class="muted">{{ f['dt'] }} &middot; Out of 5 stars: one per good course, two for the vibes.</p>
+<p class="muted">{{ f['dt'] | uk_datetime }} &middot; Out of 5 stars: one per good course, two for the vibes.</p>
 <form method="post" enctype="multipart/form-data">
   <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
   <div class="card">

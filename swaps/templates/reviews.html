@@ -367,7 +367,7 @@ setInterval(loadCharts, 20000);
 
 {% for r in rows %}
 <div class="card">
-  <p><b>{{ r['host_college'] }}</b> — {{ r['dt'][:10] }}
+  <p><b>{{ r['host_college'] }}</b> — {{ r['dt'] | uk_date }}
   &nbsp;<span style="color:#c9a227" title="courses">{% for i in range(r['course_stars']) %}★{% endfor %}</span><span style="color:#e4d9b8">{% for i in range(3 - r['course_stars']) %}★{% endfor %}</span><span style="color:#8e9aa8" title="hospitality &amp; vibes">{% for i in range(r['vibe_stars']) %}★{% endfor %}</span><span style="color:#dde2e8">{% for i in range(2 - r['vibe_stars']) %}★{% endfor %}</span>
   <span class="muted">({{ r['course_stars'] }}/3 courses, {{ r['vibe_stars'] }}/2 hospitality)
   — {{ r['first_name'] }} {{ r['last_name'][:1] }}.</span></p>

@@ -3,6 +3,7 @@ import logging
 from flask import Flask, session
 
 from . import chatbot, config
+from .dates import uk_date, uk_datetime
 from .db import close_db, get_db, get_setting
 from .security import check_csrf, csrf_token, current_user
 
@@ -30,6 +31,9 @@ def create_app():
     app.register_blueprint(main_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(ballot_bp)
+
+    app.jinja_env.filters["uk_date"] = uk_date
+    app.jinja_env.filters["uk_datetime"] = uk_datetime
 
     app.before_request(check_csrf)
     app.teardown_appcontext(close_db)
