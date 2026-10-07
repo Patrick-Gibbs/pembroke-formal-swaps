@@ -77,3 +77,46 @@ def test_swap_resets_wine_choice(db):
     accept_swap(db, propose_swap(db, 1, 1, 2, 2), 2)
     assert db.execute("SELECT wine_opt_out FROM allocations WHERE user_id=2 AND formal_id=1"
                       ).fetchone()[0] == 0
+
+
+def test_claim_asks_for_wine_choice(db_path, monkeypatch):
+    c = connect(db_path)
+    add_user(c, 1); add_user(c, 2); add_user(c, 3)
+    add_formal(c, 1, slots=5, dt="2035-05-10 19:30")
+    add_formal(c, 2, slots=5, dt="2035-06-10 19:30")
+    c.execute("UPDATE formals SET wine_fee=1, wine_price='£6', status='allocated' WHERE id=1")
+    c.execute("UPDATE formals SET status='allocated' WHERE id=2")
+    c.commit(); c.close()
+    app = _app(db_path, monkeypatch)
+
+    def client(uid):
+        m = app.test_client()
+        with m.session_transaction() as s:
+            s["uid"] = uid; s["_csrf"] = "tok"
+        return m
+
+    def opt_out(uid, fid):
+        c = connect(db_path)
+        r = c.execute("SELECT wine_opt_out FROM allocations WHERE user_id=? AND formal_id=? "
+                      "AND status='active'", (uid, fid)).fetchone()
+        c.close()
+        return None if r is None else r[0]
+
+    page = client(1).get("/formals/1/claim").data.decode()
+    assert 'name="wine" value="yes"' in page and 'name="wine" value="no"' in page
+    assert 'name="wine"' not in client(1).get("/formals/2/claim").data.decode()
+
+    m = client(1)
+    m.post("/formals/1/claim", data={"_csrf": "tok"})          # no choice -> not claimed
+    assert opt_out(1, 1) is None
+    m.post("/formals/1/claim", data={"_csrf": "tok", "wine": "no"})
+    assert opt_out(1, 1) == 1
+    client(2).post("/formals/1/claim", data={"_csrf": "tok", "wine": "yes"})
+    assert opt_out(2, 1) == 0
+    client(3).post("/formals/2/claim", data={"_csrf": "tok"})  # no wine fee: no prompt needed
+    assert opt_out(3, 2) == 0
+
+    from swaps.services import catering_list
+    c = connect(db_path)
+    assert sorted(r["wine"] for r in catering_list(c, 1)) == ["No", "Yes"]
+    assert [r["wine"] for r in catering_list(c, 2)] == [None]

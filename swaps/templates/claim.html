@@ -4,8 +4,6 @@
 <div class="card">
   <p><b>{{ formal['host_college'] }}</b> — {{ formal['dt'] }}
   {% if formal['price'] %}&middot; {{ formal['price'] }}{% endif %}</p>
-  {% if formal['wine_fee'] %}<p class="muted">🍷 Wine is an extra fee{% if formal['wine_price'] %} ({{ formal['wine_price'] }}){% endif %}.
-  You'll be down for wine unless you opt out under My formals.</p>{% endif %}
   <p>Free places right now: <b>{{ free }}</b></p>
   {% if free > 0 %}
   {% if priority %}<p class="muted">You missed out in the ballot, so you get a
@@ -19,6 +17,16 @@
   {% endif %}
   <form method="post">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    {% if formal['wine_fee'] %}
+    <fieldset style="border:1px solid #b8c4d0;border-radius:5px;padding:.5rem .8rem;margin-bottom:.8rem">
+      <legend>🍷 Wine is an extra fee{% if formal['wine_price'] %} ({{ formal['wine_price'] }}){% endif %} — would you like wine?</legend>
+      <label style="font-weight:normal"><input type="radio" name="wine" value="yes" required
+        {% if wine_choice == 'yes' %}checked{% endif %}> Yes, I'd like wine</label><br>
+      <label style="font-weight:normal"><input type="radio" name="wine" value="no"
+        {% if wine_choice == 'no' %}checked{% endif %}> No wine</label>
+      <p class="muted" style="margin:.3rem 0 0">You can change this under My formals until the host gets the final list.</p>
+    </fieldset>
+    {% endif %}
     <button>Claim this place</button>
   </form>
   <p class="muted">First come, first served — the claim is atomic, so if someone

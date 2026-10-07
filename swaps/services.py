@@ -1050,7 +1050,8 @@ class ClaimError(Exception):
     pass
 
 
-def claim_seat(conn, user_id, formal_id, actor=None, override_holds=False):
+def claim_seat(conn, user_id, formal_id, actor=None, override_holds=False,
+               wine_opt_out=False):
     """Atomically claim a free seat. BEGIN IMMEDIATE serializes writers, so
     the capacity check + insert are race-free; the partial unique index on
     active (user_id, formal_id) is a second line of defence.
@@ -1061,7 +1062,10 @@ def claim_seat(conn, user_id, formal_id, actor=None, override_holds=False):
 
     override_holds (admin only): may also take a cancelled place that hasn't
     been publicly released yet (or is in its head-start window). It's marked
-    claimed, so it's never released and nobody is notified about it."""
+    claimed, so it's never released and nobody is notified about it.
+
+    wine_opt_out: the claimer's wine choice (only stored when the formal has
+    a wine fee)."""
     with immediate(conn):
         f = conn.execute("SELECT * FROM formals WHERE id=? AND status IN ('open','allocated')",
                          (formal_id,)).fetchone()
@@ -1091,8 +1095,9 @@ def claim_seat(conn, user_id, formal_id, actor=None, override_holds=False):
                                  "who missed out — it opens to everyone shortly.")
             raise ClaimError("Sorry — no free places (someone may have beaten you to it).")
         cur = conn.execute(
-            "INSERT INTO allocations(user_id, formal_id, status, source) "
-            "VALUES (?,?,'active','claim')", (user_id, formal_id))
+            "INSERT INTO allocations(user_id, formal_id, status, source, wine_opt_out) "
+            "VALUES (?,?,'active','claim',?)",
+            (user_id, formal_id, 1 if (wine_opt_out and f["wine_fee"]) else 0))
         alloc_id = cur.lastrowid
         # Consume one released seat now available to this claimer, if any (a
         # seat may also be free simply because the ballot didn't fill it).

@@ -766,9 +766,13 @@ def claim(formal_id):
     f = db.execute("SELECT * FROM formals WHERE id=?", (formal_id,)).fetchone()
     if f is None:
         abort(404)
-    if request.method == "POST":
+    wine_choice = request.form.get("wine") if request.method == "POST" else None
+    if request.method == "POST" and f["wine_fee"] and wine_choice not in ("yes", "no"):
+        flash("Please say whether you'd like wine before claiming.", "error")
+    elif request.method == "POST":
         try:
-            inherited = claim_seat(db, current_user()["id"], formal_id)
+            inherited = claim_seat(db, current_user()["id"], formal_id,
+                                   wine_opt_out=(wine_choice == "no"))
             if inherited:
                 from .. import emailer
                 emailer.claim_inherited_email(current_user()["email"], f,
@@ -777,8 +781,9 @@ def claim(formal_id):
                       f"the host list is already set, so your meal is fixed to: "
                       f"{inherited['dietary']}. We've emailed you the details.", "ok")
             else:
-                flash(f"You're in! You have a place at the {f['host_college']} formal.",
-                      "ok")
+                flash(f"You're in! You have a place at the {f['host_college']} formal."
+                      + ((" No wine for you." if wine_choice == "no" else " Wine included.")
+                         if f["wine_fee"] else ""), "ok")
             return redirect(url_for("main.me"))
         except ClaimError as e:
             flash(str(e), "error")
@@ -797,7 +802,7 @@ def claim(formal_id):
         if row:
             inherit_preview = {"replaced": row["orig_name"], "dietary": row["orig_dietary"]}
     return render_template("claim.html", formal=f, priority=priority,
-                           inherit_preview=inherit_preview,
+                           inherit_preview=inherit_preview, wine_choice=wine_choice,
                            can_subscribe=can_subscribe(db, f),
                            free=free_seats(db, formal_id, f["slots"], priority=priority))
 
