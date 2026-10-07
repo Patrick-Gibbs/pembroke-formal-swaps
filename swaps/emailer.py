@@ -40,8 +40,9 @@ def _record(to, subject, ok, error=""):
         log.exception("could not write email_log entry")
 
 
-def send(to, subject, html, attachments=None, cc=None):
+def send(to, subject, html, attachments=None, cc=None, reply_to=None):
     """Send one email. `to`/`cc` may be a str or a list of addresses.
+    reply_to: address replies should go to (instead of the no-reply sender).
     attachments: [(filename, bytes)]. Returns True on success. Never raises.
     Every attempt is recorded in email_log."""
     to_list = [to] if isinstance(to, str) else list(to)
@@ -49,9 +50,10 @@ def send(to, subject, html, attachments=None, cc=None):
     rec = ", ".join(to_list)
     if config.EMAIL_MODE != "live":
         names = [a[0] for a in (attachments or [])]
-        log.info("[dev email] to=%s cc=%s subject=%r attachments=%s",
-                 rec, cc_list, subject, names)
-        print(f"--- DEV EMAIL to={rec} cc={cc_list} subject={subject!r} "
+        log.info("[dev email] to=%s cc=%s reply_to=%s subject=%r attachments=%s",
+                 rec, cc_list, reply_to, subject, names)
+        print(f"--- DEV EMAIL to={rec} cc={cc_list} reply_to={reply_to} "
+              f"subject={subject!r} "
               f"attachments={names} ---\n{html}\n---", flush=True)
         _record(rec, subject, True, "dev mode — not actually sent")
         return True
@@ -59,6 +61,8 @@ def send(to, subject, html, attachments=None, cc=None):
                "html": html}
     if cc_list:
         payload["cc"] = cc_list
+    if reply_to:
+        payload["reply_to"] = reply_to
     if attachments:
         payload["attachments"] = [
             {"filename": name, "content": base64.b64encode(data).decode()}
@@ -312,7 +316,8 @@ def swap_accepted_email(to, other_name, now_attending, gave_up):
 def catering_email(to, cc, formal, rows, admin_name=""):
     """Attendance list + dietary requirements to a host college, one week before.
     rows: sequence with first_name, last_name, dietary_flags, dietary_other.
-    Addressed to the host contact by name if known; signed by admin_name."""
+    Addressed to the host contact by name if known; signed by admin_name.
+    Replies go to the cc'd admin, not the no-reply sender."""
     try:
         host_name = (formal["host_name"] or "").strip()
     except (KeyError, IndexError):
@@ -348,7 +353,7 @@ def catering_email(to, cc, formal, rows, admin_name=""):
         "greeting": greeting, "host_college": formal["host_college"],
         "dt": formal["dt"], "count": len(rows), "table": table,
         "summary": summary, "signoff": signoff})
-    return send(to, subject, html, cc=cc)
+    return send(to, subject, html, cc=cc, reply_to=cc)
 
 
 def claim_inherited_email(to, formal, replaced, dietary):
