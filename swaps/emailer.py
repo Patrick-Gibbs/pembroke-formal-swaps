@@ -43,7 +43,9 @@ def _record(to, subject, ok, error=""):
 def send(to, subject, html, attachments=None, cc=None, reply_to=None):
     """Send one email. `to`/`cc` may be a str or a list of addresses.
     reply_to: address replies should go to (instead of the no-reply sender).
-    attachments: [(filename, bytes)]. Returns True on success. Never raises.
+    attachments: [(filename, bytes)] or [(filename, bytes, content_id)] — a
+    content_id makes it an inline image the html can show via src="cid:<id>".
+    Returns True on success. Never raises.
     Every attempt is recorded in email_log."""
     to_list = [to] if isinstance(to, str) else list(to)
     cc_list = [cc] if isinstance(cc, str) and cc else (cc or [])
@@ -64,9 +66,12 @@ def send(to, subject, html, attachments=None, cc=None, reply_to=None):
     if reply_to:
         payload["reply_to"] = reply_to
     if attachments:
-        payload["attachments"] = [
-            {"filename": name, "content": base64.b64encode(data).decode()}
-            for name, data in attachments]
+        payload["attachments"] = []
+        for name, data, *cid in attachments:
+            a = {"filename": name, "content": base64.b64encode(data).decode()}
+            if cid:
+                a["content_id"] = cid[0]
+            payload["attachments"].append(a)
     try:
         for attempt in range(4):
             r = requests.post(
