@@ -1,5 +1,6 @@
 import csv
 import io
+from datetime import datetime, timedelta
 
 from flask import (Blueprint, Response, flash, redirect, render_template,
                    request, session, url_for)
@@ -10,8 +11,8 @@ from ..security import (admin_required, client_ip, ip_blocked,
                         lockout_remaining, record_attempt, verify_secret)
 from ..services import (CancelError, ClaimError, auto_subscribe_unmet,
                         cancel_allocation, claim_seat, pending_holds,
-                        free_seats, release_mode, run_allocation, seat_admin,
-                        unseat_admin)
+                        free_seats, parse_local, release_mode, run_allocation,
+                        seat_admin, unseat_admin)
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -310,7 +311,7 @@ def backup_db():
     import sqlite3
     import tempfile
     from flask import send_file
-    from datetime import datetime, timezone
+    from datetime import timezone
     src = get_db()
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
@@ -339,7 +340,8 @@ def _formal_from_form():
             request.form.get("host_phone", "").strip()[:50],
             _parse_endowment(request.form.get("endowment_m", "")),
             request.form.get("description", "").strip()[:2000],
-            _parse_lead_days(request.form.get("catering_lead_days", "")),
+            None,  # catering_lead_days: superseded by catering_at on the form
+            _parse_catering_date(request.form.get("catering_date", "")),
             1 if request.form.get("wine_fee") else 0,
             request.form.get("wine_price", "").strip()[:60])
 
@@ -352,6 +354,44 @@ def _parse_lead_days(raw):
         return max(0, int(raw))
     except ValueError:
         return None
+
+
+def _parse_catering_date(raw):
+    """'YYYY-MM-DD' -> 'YYYY-MM-DD 09:00' (host email goes at 9am that day)."""
+    raw = (raw or "").strip()[:10]
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d").strftime("%Y-%m-%d 09:00")
+    except ValueError:
+        return None
+
+
+def _catering_date_error(vals):
+    """Message if the host-email date isn't before the formal, else None."""
+    dt, cat = vals[1], vals[16]
+    if not cat or not dt:
+        return None
+    try:
+        if parse_local(cat) >= parse_local(dt):
+            return "The host email date must be before the formal."
+    except ValueError:
+        return None
+    return None
+
+
+def _catering_date_value(f):
+    """Date to show in the form: the set date, else one derived from a legacy
+    lead-days value (saving then converts it to a fixed date)."""
+    if f is None:
+        return ""
+    if f["catering_at"]:
+        return f["catering_at"][:10]
+    if f["catering_lead_days"] is not None:
+        try:
+            return (parse_local(f["dt"]) - timedelta(days=f["catering_lead_days"])
+                    ).strftime("%Y-%m-%d")
+        except ValueError:
+            return ""
+    return ""
 
 
 def _parse_endowment(raw):
@@ -385,12 +425,14 @@ def formal_new():
         vals = _formal_from_form()
         if not vals[0] or not vals[1] or vals[3] < 1:
             flash("College, date/time and a positive slot count are required.", "error")
+        elif _catering_date_error(vals):
+            flash(_catering_date_error(vals), "error")
         else:
             db.execute("INSERT INTO formals(host_college, dt, price, slots, term, "
                        "ballot_open, ballot_close, status, location, instructions, "
                        "host_name, host_email, host_phone, endowment_m, description, "
-                       "catering_lead_days, wine_fee, wine_price) "
-                       "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", vals)
+                       "catering_lead_days, catering_at, wine_fee, wine_price) "
+                       "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", vals)
             _remember_endowment(db, vals[0], vals[13])
             audit(db, "admin", "formal_create", f"{vals[0]} {vals[1]}")
             seat_admin(db, vals[4])  # reserve the admin's seat if auto-attend on
@@ -398,6 +440,7 @@ def formal_new():
             return redirect(url_for("admin.dashboard"))
     return render_template("admin/formal_form.html", f=None,
                            default_term=get_setting(db, "current_term"),
+                           catering_date=request.form.get("catering_date", ""),
                            endowments=_endowment_map(db))
 
 
@@ -411,17 +454,24 @@ def formal_edit(fid):
         return redirect(url_for("admin.dashboard"))
     if request.method == "POST":
         vals = _formal_from_form()
+        err = _catering_date_error(vals)
+        if err:
+            flash(err, "error")
+            return render_template("admin/formal_form.html", f=f, default_term=f["term"],
+                                   catering_date=request.form.get("catering_date", ""),
+                                   endowments=_endowment_map(db))
         db.execute("UPDATE formals SET host_college=?, dt=?, price=?, slots=?, term=?, "
                    "ballot_open=?, ballot_close=?, status=?, location=?, "
                    "instructions=?, host_name=?, host_email=?, host_phone=?, "
-                   "endowment_m=?, description=?, catering_lead_days=?, wine_fee=?, "
-                   "wine_price=? WHERE id=?",
+                   "endowment_m=?, description=?, catering_lead_days=?, catering_at=?, "
+                   "wine_fee=?, wine_price=? WHERE id=?",
                    vals + (fid,))
         _remember_endowment(db, vals[0], vals[13])
         audit(db, "admin", "formal_edit", f"id={fid} {vals[0]} {vals[1]}")
         flash("Saved.", "ok")
         return redirect(url_for("admin.dashboard"))
     return render_template("admin/formal_form.html", f=f, default_term=f["term"],
+                           catering_date=_catering_date_value(f),
                            endowments=_endowment_map(db))
 
 
@@ -493,7 +543,8 @@ def formals_import():
                 "INSERT INTO formals(host_college, dt, price, slots, term, "
                 "ballot_open, ballot_close, status, location, instructions, "
                 "host_name, host_email, host_phone, description, catering_lead_days, "
-                "wine_fee, wine_price) VALUES (?,?,?,?,?,?,?,'open',?,?,?,?,?,?,?,?,?)",
+                "catering_at, wine_fee, wine_price) "
+                "VALUES (?,?,?,?,?,?,?,'open',?,?,?,?,?,?,?,?,?,?)",
                 (college, dt, r.get("price", ""), slots,
                  r.get("term") or get_setting(db, "current_term"),
                  (r.get("ballot_open") or "").replace("T", " "),
@@ -502,6 +553,7 @@ def formals_import():
                  r.get("host_name", ""), r.get("host_email", ""),
                  r.get("host_phone", ""), r.get("description", ""),
                  _parse_lead_days(r.get("catering_lead_days", "")),
+                 _parse_catering_date(r.get("catering_date", "")),
                  1 if (r.get("wine_fee") or "").strip().lower() in ("1", "yes", "y", "true")
                  else 0,
                  (r.get("wine_price") or "").strip()[:60]))

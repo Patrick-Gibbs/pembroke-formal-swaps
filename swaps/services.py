@@ -1254,12 +1254,16 @@ def send_scheduled_emails(conn, send_reminder, send_review, send_catering=None,
         f = conn.execute("SELECT * FROM formals WHERE id=?", (row["id"],)).fetchone()
         start = parse_local(f["dt"])
 
-        # Host catering list: once, from the formal's lead-days point up to its
-        # start. Lead days are per-formal (default CATERING_LEAD_DAYS).
-        lead = f["catering_lead_days"] if f["catering_lead_days"] is not None \
-            else CATERING_LEAD_DAYS
-        if (send_catering and not f["catering_sent"]
-                and start - timedelta(days=lead) <= now < start):
+        # Host catering list: once, from the formal's send point up to its
+        # start. The send point is the admin-set catering_at date if any, else
+        # lead days before (per-formal, default CATERING_LEAD_DAYS).
+        if f["catering_at"]:
+            send_at = parse_local(f["catering_at"])
+        else:
+            lead = f["catering_lead_days"] if f["catering_lead_days"] is not None \
+                else CATERING_LEAD_DAYS
+            send_at = start - timedelta(days=lead)
+        if send_catering and not f["catering_sent"] and send_at <= now < start:
             to, cc = catering_recipients(f["host_email"], admin_email)
             attendees = catering_list(conn, f["id"])
             if published and attendees and to:

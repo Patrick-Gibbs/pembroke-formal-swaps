@@ -138,6 +138,21 @@ def test_catering_multiple_host_emails(db):
                      "admin@cam.ac.uk", 1)]  # all hosts on 'to', admin cc'd
 
 
+def test_catering_fires_on_admin_set_date(db):
+    _catering_setup(db)
+    db.execute("UPDATE formals SET catering_at='2030-05-01 09:00'")    # 9 days before
+    assert _run_catering(db, datetime(2030, 5, 1, 8, 59)) == []         # not yet
+    assert len(_run_catering(db, datetime(2030, 5, 1, 9))) == 1         # fires on the date
+    assert _run_catering(db, datetime(2030, 5, 2, 9)) == []
+
+
+def test_catering_date_overrides_lead_days(db):
+    _catering_setup(db)
+    db.execute("UPDATE formals SET catering_lead_days=10, catering_at='2030-05-08 09:00'")
+    assert _run_catering(db, datetime(2030, 5, 4, 12)) == []            # lead days ignored
+    assert len(_run_catering(db, datetime(2030, 5, 8, 9))) == 1
+
+
 def test_catering_and_team_greeting(db):
     # The rendered email addresses the main contact "and team" when >1 host email.
     import io, contextlib
