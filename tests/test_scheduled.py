@@ -154,6 +154,27 @@ def test_catering_and_team_greeting(db):
     assert "— Patrick Gibbs" in out
 
 
+
+def test_catering_live_payload_ccs_admin_and_replies_to_them(db, monkeypatch):
+    # One email: hosts on 'to', admin cc'd and set as reply-to (not noreply).
+    from swaps import config, emailer
+    posts = []
+
+    class R:
+        status_code = 200
+        text = ""
+    monkeypatch.setattr(config, "EMAIL_MODE", "live")
+    monkeypatch.setattr(emailer.requests, "post",
+                        lambda url, json, **kw: posts.append(json) or R())
+    f = {"id": 1, "host_college": "Jesus", "dt": "2030-05-10 19:30",
+         "host_name": "Jane", "host_email": "a@x.ac.uk"}
+    rows = [{"first_name": "A", "last_name": "B", "dietary": "—"}]
+    assert emailer.catering_email(["a@x.ac.uk"], "admin@x.ac.uk", f, rows)
+    assert len(posts) == 1
+    assert posts[0]["to"] == ["a@x.ac.uk"]
+    assert posts[0]["cc"] == ["admin@x.ac.uk"]
+    assert posts[0]["reply_to"] == "admin@x.ac.uk"
+
 def test_admin_auto_attend_reserves_a_seat(db):
     add_user(db, 1)
     add_formal(db, 1, slots=3)
