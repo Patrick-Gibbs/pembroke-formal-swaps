@@ -358,9 +358,10 @@ def _parse_lead_days(raw):
 
 
 def _parse_catering_date(raw):
-    """'YYYY-MM-DD' -> 'YYYY-MM-DD 09:00' (host email goes at 9am that day)."""
-    raw = (raw or "").strip()[:10]
+    """'YYYY-MM-DD' or UK 'dd/mm/yyyy' -> 'YYYY-MM-DD 09:00' (host email goes
+    at 9am that day)."""
     try:
+        raw = (from_uk((raw or "").strip()) or "")[:10]
         return datetime.strptime(raw, "%Y-%m-%d").strftime("%Y-%m-%d 09:00")
     except ValueError:
         return None
