@@ -10,7 +10,8 @@ from ..security import (admin_required, client_ip, ip_blocked,
                         lockout_remaining, record_attempt, verify_secret)
 from ..services import (CancelError, ClaimError, auto_subscribe_unmet,
                         cancel_allocation, claim_seat, pending_holds,
-                        free_seats, run_allocation, seat_admin, unseat_admin)
+                        free_seats, release_mode, run_allocation, seat_admin,
+                        unseat_admin)
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -92,6 +93,7 @@ def dashboard():
                            officer_bio=get_setting(db, "officer_bio", ""),
                            officer_photo=get_setting(db, "officer_photo", ""),
                            admin_auto_attend=get_setting(db, "admin_auto_attend", "0") == "1",
+                           release_mode=release_mode(db),
                            list_public=get_setting(db, "attendee_list_public") == "1")
 
 
@@ -744,7 +746,8 @@ def roster(fid):
                            wine_yes=wine_yes, wine_no=wine_no,
                            free=free_seats(db, fid, f["slots"]),
                            held=pending_holds(db, fid),
-                           held_pri=pending_holds(db, fid, priority=True))
+                           held_pri=pending_holds(db, fid, priority=True),
+                           release_mode=release_mode(db))
 
 
 @bp.route("/formals/<int:fid>/add-user", methods=["POST"])
@@ -772,6 +775,24 @@ def add_user(fid):
     return redirect(url_for("admin.roster", fid=fid))
 
 
+@bp.route("/release-mode", methods=["POST"])
+@admin_required
+def set_release_mode_view():
+    """Switch between automatic and manual release of cancelled places."""
+    from ..services import set_release_mode
+    mode = "manual" if request.form.get("mode") == "manual" else "auto"
+    n = set_release_mode(get_db(), mode)
+    if mode == "manual":
+        flash("Manual release on: cancelled places are held until you release them "
+              "(per-formal Release buttons) or assign them (add a member on the roster)."
+              + (f" {n} waiting place(s) held back." if n else ""), "ok")
+    else:
+        flash("Auto release on: cancelled places open at random times as usual."
+              + (f" {n} held place(s) rescheduled for automatic release." if n else ""),
+              "ok")
+    return redirect(url_for("admin.dashboard"))
+
+
 @bp.route("/formals/<int:fid>/release", methods=["POST"])
 @admin_required
 def release_formal(fid):
@@ -796,7 +817,10 @@ def cancel_alloc(alloc_id):
     try:
         # user_id=None: admin override — bypasses ownership and the 24h rule
         cancel_allocation(db, None, alloc_id, actor="admin")
-        flash("Allocation cancelled; slot will release within the hour.", "ok")
+        flash("Allocation cancelled; " + (
+            "the place is held for you to release or assign (manual release)."
+            if release_mode(db) == "manual" else
+            "the place will be released automatically at a random time."), "ok")
     except CancelError as e:
         flash(str(e), "error")
     return redirect(request.referrer or url_for("admin.dashboard"))
@@ -1114,7 +1138,9 @@ def subscriptions():
     releases = db.execute(
         "SELECT r.*, f.host_college FROM released_slots r "
         "JOIN formals f ON f.id=r.formal_id ORDER BY r.id DESC LIMIT 50").fetchall()
-    return render_template("admin/subscriptions.html", rows=rows, releases=releases)
+    from ..services import MANUAL_HOLD
+    return render_template("admin/subscriptions.html", rows=rows, releases=releases,
+                           manual_hold=MANUAL_HOLD)
 
 
 @bp.route("/emails")

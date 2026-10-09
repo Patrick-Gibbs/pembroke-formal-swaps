@@ -85,6 +85,61 @@ def daytime_clamp(dt_local):
     return dt_local
 
 
+# Release mode (admin setting): "auto" releases cancelled places at the random
+# times above; "manual" holds them (release times parked at MANUAL_HOLD) until
+# the admin releases them or fills them by adding a member to the formal.
+MANUAL_HOLD = "9999-12-31 00:00:00"
+
+
+def release_mode(conn):
+    return "manual" if get_setting(conn, "release_mode", "auto") == "manual" else "auto"
+
+
+def _release_times(rng, start_local=None):
+    """Random (release_at, general_at) UTC strings for a place freed now."""
+    pri_delay = rng.randint(0, PRIORITY_OPEN_MAX_HOURS * 3600)
+    gap = rng.randint(GENERAL_GAP_MIN_HOURS * 3600, GENERAL_GAP_MAX_HOURS * 3600)
+    rel_local = daytime_clamp((start_local or local_now()) + timedelta(seconds=pri_delay))
+    gen_local = daytime_clamp(rel_local + timedelta(seconds=gap))
+    return _local_to_utc_str(rel_local), _local_to_utc_str(gen_local)
+
+
+def set_release_mode(conn, mode, rng=None):
+    """Switch release mode. To manual: places not yet open to anyone are held,
+    and places only open to the no-swaps group stop short of opening to all.
+    To auto: held places get fresh random release times, as if cancelled now.
+    Returns the number of places affected."""
+    rng = rng or secrets.SystemRandom()
+    mode = "manual" if mode == "manual" else "auto"
+    now = utcnow_str()
+    n = 0
+    with immediate(conn):
+        from .db import set_setting
+        set_setting(conn, "release_mode", mode)
+        if mode == "manual":
+            n += conn.execute(
+                "UPDATE released_slots SET release_at=?, general_at=? "
+                "WHERE claimed_by IS NULL AND release_at > ?",
+                (MANUAL_HOLD, MANUAL_HOLD, now)).rowcount
+            n += conn.execute(
+                "UPDATE released_slots SET general_at=? WHERE claimed_by IS NULL "
+                "AND release_at <= ? AND COALESCE(general_at, release_at) > ?",
+                (MANUAL_HOLD, now, now)).rowcount
+        else:
+            for r in conn.execute(
+                    "SELECT id, release_at FROM released_slots WHERE claimed_by IS NULL "
+                    "AND (release_at=? OR general_at=?)",
+                    (MANUAL_HOLD, MANUAL_HOLD)).fetchall():
+                rel, gen = _release_times(rng)
+                if r["release_at"] != MANUAL_HOLD:     # already open to no-swaps
+                    rel = r["release_at"]
+                conn.execute("UPDATE released_slots SET release_at=?, general_at=? "
+                             "WHERE id=?", (rel, gen, r["id"]))
+                n += 1
+        audit(conn, "admin", "release_mode", f"mode={mode} places={n}")
+    return n
+
+
 def pending_holds(conn, formal_id, priority=False):
     """Unclaimed released seats not yet available to this audience. Priority
     claimers (who missed all allocations) get them from release_at; everyone
@@ -1020,12 +1075,11 @@ def cancel_allocation(conn, user_id, allocation_id, rng=None, actor=None):
         # rolling over to the next morning if need be. The random gap between
         # the two stages guarantees the missed-out group a genuine head start
         # and stops a leaver from timing the reopen for a friend.
-        pri_delay = rng.randint(0, PRIORITY_OPEN_MAX_HOURS * 3600)
-        gap = rng.randint(GENERAL_GAP_MIN_HOURS * 3600, GENERAL_GAP_MAX_HOURS * 3600)
-        rel_local = daytime_clamp(local_now() + timedelta(seconds=pri_delay))
-        gen_local = daytime_clamp(rel_local + timedelta(seconds=gap))
-        release_at = _local_to_utc_str(rel_local)
-        general_at = _local_to_utc_str(gen_local)
+        # In manual release mode the place is held until the admin acts.
+        if release_mode(conn) == "manual":
+            release_at = general_at = MANUAL_HOLD
+        else:
+            release_at, general_at = _release_times(rng)
         # Snapshot who dropped and their dietary. If the host list has already
         # gone out, whoever claims this seat inherits this dietary (the host
         # can't re-cater), so keep the frozen dietary they held for this seat.

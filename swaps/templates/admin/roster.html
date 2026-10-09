@@ -29,7 +29,7 @@
         <button class="small">Release to all ({{ held }})</button>
       </form>{% endif %}
   <a class="btn ghost" href="/admin/">Back</a>
-  &nbsp; Free seats now: <b>{{ free }}</b> / {{ f['slots'] }}{% if f['wine_fee'] %} &nbsp; 🍷 Wine{% if f['wine_price'] %} ({{ f['wine_price'] }}){% endif %}: <b>{{ wine_yes }}</b> yes, <b>{{ wine_no }}</b> opted out{% endif %}{% if held %} <span class="muted">(+{{ held }} cancelled, awaiting public release — you can still fill {{ 'it' if held == 1 else 'these' }} below)</span>{% endif %}
+  &nbsp; Free seats now: <b>{{ free }}</b> / {{ f['slots'] }}{% if f['wine_fee'] %} &nbsp; 🍷 Wine{% if f['wine_price'] %} ({{ f['wine_price'] }}){% endif %}: <b>{{ wine_yes }}</b> yes, <b>{{ wine_no }}</b> opted out{% endif %}{% if held %} <span class="muted">(+{{ held }} cancelled, {{ 'held for you to release or assign' if release_mode == 'manual' else 'awaiting public release' }} — you can still fill {{ 'it' if held == 1 else 'these' }} below)</span>{% endif %}
 </p>
 
 <div id="copy-roster" style="display:none">
@@ -92,6 +92,6 @@
     <button>Add to this formal</button>
   </form>
   <p class="muted">To move someone between formals: add them to the new one, then remove them here.
-  Admin removals bypass the cancellation cut-off; the freed seat still releases at a random time within an hour.</p>
+  Admin removals bypass the cancellation cut-off; {% if release_mode == 'manual' %}the freed seat is held until you release or assign it (manual release mode).{% else %}the freed seat still releases automatically at a random time.{% endif %}</p>
 </div>
 {% endblock %}

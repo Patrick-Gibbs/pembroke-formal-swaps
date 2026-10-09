@@ -54,6 +54,22 @@
 </p>
 
 <div class="card">
+  <h3>Cancelled places</h3>
+  <p>Release mode: <b>{{ 'Manual' if release_mode == 'manual' else 'Auto' }}</b> —
+  {% if release_mode == 'manual' %}cancelled places are held until you release them
+  (Release to no-swaps / Release to all on each formal) or assign them (add a member
+  from the formal's roster). Nobody is emailed until you release.
+  {% else %}cancelled places open automatically at a random time, first to members
+  with no swaps, then to everyone.{% endif %}</p>
+  <form class="inline" method="post" action="/admin/release-mode"
+        data-confirm="{{ 'Switch to AUTO release? Held places will be scheduled to open at random times and subscribers emailed when they do.' if release_mode == 'manual' else 'Switch to MANUAL release? Places waiting to open will be held until you release or assign them.' }}" onsubmit="return confirm(this.dataset.confirm)">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="mode" value="{{ 'auto' if release_mode == 'manual' else 'manual' }}">
+    <button>{{ 'Switch to auto release' if release_mode == 'manual' else 'Switch to manual release' }}</button>
+  </form>
+</div>
+
+<div class="card">
   <h3>Settings</h3>
   <form method="post" action="/admin/settings" enctype="multipart/form-data">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">

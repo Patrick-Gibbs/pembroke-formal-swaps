@@ -11,12 +11,13 @@
 </table>
 <h1>Recent slot releases</h1>
 <table>
-  <tr><th>#</th><th>Formal</th><th>Release at (UTC)</th><th>Opened</th><th>Claimed by user</th><th>Claimed at</th></tr>
+  <tr><th>#</th><th>Formal</th><th>Release at (UTC)</th><th>To everyone at (UTC)</th><th>Opened</th><th>Claimed by user</th><th>Claimed at</th></tr>
   {% for r in releases %}
-  <tr><td>{{ r['id'] }}</td><td>{{ r['host_college'] }}</td><td>{{ r['release_at'] }}</td>
+  <tr><td>{{ r['id'] }}</td><td>{{ r['host_college'] }}</td><td>{{ 'held (manual)' if r['release_at'] == manual_hold else r['release_at'] }}</td>
+      <td>{{ 'held (manual)' if r['general_at'] == manual_hold else (r['general_at'] or '—') }}</td>
       <td>{{ '✓' if r['opened'] else 'pending' }}</td>
       <td>{{ r['claimed_by'] or '—' }}</td><td>{{ r['claimed_at'] or '—' }}</td></tr>
-  {% else %}<tr><td colspan="6">None</td></tr>
+  {% else %}<tr><td colspan="7">None</td></tr>
   {% endfor %}
 </table>
 {% endblock %}
