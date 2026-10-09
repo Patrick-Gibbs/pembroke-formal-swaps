@@ -2,7 +2,7 @@
 {% block content %}
 <h1>Claim a place — {{ formal['host_college'] }}</h1>
 <div class="card">
-  <p><b>{{ formal['host_college'] }}</b> — {{ formal['dt'] }}
+  <p><b>{{ formal['host_college'] }}</b> — {{ formal['dt'] | uk_datetime }}
   {% if formal['price'] %}&middot; {{ formal['price'] }}{% endif %}</p>
   <p>Free places right now: <b>{{ free }}</b></p>
   {% if free > 0 %}

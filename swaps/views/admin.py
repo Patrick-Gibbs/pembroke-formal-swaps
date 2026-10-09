@@ -6,6 +6,7 @@ from flask import (Blueprint, Response, flash, redirect, render_template,
                    request, session, url_for)
 
 from .. import config
+from ..dates import from_uk, uk_datetime
 from ..db import get_db, get_setting, set_setting, audit
 from ..security import (admin_required, client_ip, ip_blocked,
                         lockout_remaining, record_attempt, verify_secret)
@@ -531,7 +532,13 @@ def formals_import():
             r = {(k or "").strip().lower(): (v or "").strip()
                  for k, v in row.items()}
             college = r.get("host_college") or r.get("college")
-            dt = (r.get("dt") or r.get("date") or "").replace("T", " ")
+            try:
+                dt = from_uk(r.get("dt") or r.get("date"))
+                b_open = from_uk(r.get("ballot_open"))
+                b_close = from_uk(r.get("ballot_close"))
+            except ValueError:
+                errors.append(f"row {i}: dates must be dd/mm/yyyy HH:MM")
+                continue
             try:
                 slots = int(r.get("slots") or 0)
             except ValueError:
@@ -547,8 +554,7 @@ def formals_import():
                 "VALUES (?,?,?,?,?,?,?,'open',?,?,?,?,?,?,?,?,?,?)",
                 (college, dt, r.get("price", ""), slots,
                  r.get("term") or get_setting(db, "current_term"),
-                 (r.get("ballot_open") or "").replace("T", " "),
-                 (r.get("ballot_close") or "").replace("T", " "),
+                 b_open, b_close,
                  r.get("location", ""), r.get("instructions", ""),
                  r.get("host_name", ""), r.get("host_email", ""),
                  r.get("host_phone", ""), r.get("description", ""),
@@ -1005,7 +1011,7 @@ def export_all():
         diet = resolve_dietary(r["inherited_dietary"], r["dietary_flags"],
                                r["dietary_other"])
         wine = ("no" if r["wine_opt_out"] else "yes") if r["wine_fee"] else ""
-        w.writerow([r["host_college"], r["dt"], r["price"], r["term"],
+        w.writerow([r["host_college"], uk_datetime(r["dt"]), r["price"], r["term"],
                     r["first_name"], r["last_name"], r["email"], diet, wine])
     return Response(buf.getvalue(), mimetype="text/csv", headers={
         "Content-Disposition": "attachment; filename=outgoing-swaps-all.csv"})
@@ -1040,11 +1046,11 @@ def incoming_export():
             "SELECT * FROM incoming_participants WHERE swap_id=? "
             "ORDER BY last_name, first_name", (s["id"],)).fetchall()
         if not people:
-            w.writerow([s["guest_college"], s["dt"], s["host_name"],
+            w.writerow([s["guest_college"], uk_datetime(s["dt"]), s["host_name"],
                         s["host_email"], s["host_phone"], s["notes"],
                         "", "", "", ""])
         for p in people:
-            w.writerow([s["guest_college"], s["dt"], s["host_name"],
+            w.writerow([s["guest_college"], uk_datetime(s["dt"]), s["host_name"],
                         s["host_email"], s["host_phone"], s["notes"],
                         p["first_name"], p["last_name"], p["dietary"], p["notes"]])
     return Response(buf.getvalue(), mimetype="text/csv", headers={
@@ -1300,7 +1306,7 @@ def remind_unranked():
 
         threading.Thread(target=deliver, daemon=True).start()
         from ..services import utcnow_str
-        set_setting(db, "rank_reminder_last", f"{utcnow_str()} UTC — {len(batch)} sent")
+        set_setting(db, "rank_reminder_last", f"{uk_datetime(utcnow_str())} UTC — {len(batch)} sent")
         audit(db, "admin", "rank_reminder", f"term={term} recipients={len(batch)}")
         flash(f"Reminder emails queued to {len(batch)} member(s). They'll go out over "
               f"the next minute or so — check the Email log for delivery.", "ok")

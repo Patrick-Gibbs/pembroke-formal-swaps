@@ -29,7 +29,7 @@
       <th>Fill %</th><th>Ranked by</th><th>1st choices</th><th>Demand ×</th></tr>
   {% for r in rows %}
   <tr>
-    <td>{{ r['college'] }}</td><td>{{ r['dt'] }}</td><td>{{ r['slots'] }}</td>
+    <td>{{ r['college'] }}</td><td>{{ r['dt'] | uk_datetime }}</td><td>{{ r['slots'] }}</td>
     <td>{{ r['filled'] }}</td><td>{{ r['free'] }}</td><td>{{ r['fill_pct'] }}%</td>
     <td>{{ r['ranked_by'] }}</td><td>{{ r['first_choice'] }}</td>
     <td{% if r['demand_ratio'] > 1 %} style="font-weight:bold;color:var(--err)"{% endif %}>{{ r['demand_ratio'] }}</td>

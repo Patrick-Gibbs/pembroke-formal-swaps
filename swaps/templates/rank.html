@@ -43,7 +43,7 @@ seats at a formal to get in.</div>
 
 <p class="muted">Put the formals you want in order (1 = most wanted). Leave out any
 you don't want. You can edit until the ballot closes{% if ballot_closes %}
-(<b>{{ ballot_closes }}</b> — <span id="countdown" style="font-variant-numeric:tabular-nums"></span>){% endif %}.</p>
+(<b>{{ ballot_closes | uk_datetime }}</b> — <span id="countdown" style="font-variant-numeric:tabular-nums"></span>){% endif %}.</p>
 {% if ballot_closes %}
 <script>
 (function () {
@@ -70,7 +70,7 @@ you don't want. You can edit until the ballot closes{% if ballot_closes %}
   <ol class="ranklist" id="ranked">
     {% for f in ranked %}
     <li data-id="{{ f['id'] }}"><span class="num"></span>
-      <span class="grow"><b>{{ f['host_college'] }}</b> — {{ f['dt'] }} {% if f['price'] %}({{ f['price'] }}){% endif %}
+      <span class="grow"><b>{{ f['host_college'] }}</b> — {{ f['dt'] | uk_datetime }} {% if f['price'] %}({{ f['price'] }}){% endif %}
         {% if f['description'] %}<br><span class="muted">{{ f['description'] }}</span>{% endif %}{% if f['wine_fee'] %}<br><span class="muted" style="font-size:.85rem">🍷 Wine is an extra fee{% if f['wine_price'] %} ({{ f['wine_price'] }}){% endif %} — you can opt out under My formals</span>{% endif %}</span>
       <button type="button" class="small ghost" onclick="move(this,-1)">▲</button>
       <button type="button" class="small ghost" onclick="move(this,1)">▼</button>
@@ -83,7 +83,7 @@ you don't want. You can edit until the ballot closes{% if ballot_closes %}
   <ul class="ranklist" id="unranked">
     {% for f in unranked %}
     <li data-id="{{ f['id'] }}">
-      <span class="grow"><b>{{ f['host_college'] }}</b> — {{ f['dt'] }} {% if f['price'] %}({{ f['price'] }}){% endif %}
+      <span class="grow"><b>{{ f['host_college'] }}</b> — {{ f['dt'] | uk_datetime }} {% if f['price'] %}({{ f['price'] }}){% endif %}
         {% if f['description'] %}<br><span class="muted">{{ f['description'] }}</span>{% endif %}{% if f['wine_fee'] %}<br><span class="muted" style="font-size:.85rem">🍷 Wine is an extra fee{% if f['wine_price'] %} ({{ f['wine_price'] }}){% endif %} — you can opt out under My formals</span>{% endif %}</span>
       <button type="button" class="small" onclick="add(this)">+ Add to ranking</button>
     </li>

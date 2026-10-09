@@ -7,6 +7,7 @@ Anthropic quota via ANTHROPIC_API_KEY."""
 import logging
 
 from . import config
+from .dates import uk_datetime
 from .db import get_setting
 from .services import cancel_charge_hours, cancel_cutoff_hours, free_seats
 
@@ -53,8 +54,8 @@ def build_context(db):
     t_open = get_setting(db, "term_ballot_open")
     t_close = get_setting(db, "term_ballot_close")
     if t_open or t_close:
-        lines.append(f"Ballot window: opens {t_open or '?'}, closes "
-                     f"{t_close or '?'} (UK time).")
+        lines.append(f"Ballot window: opens {uk_datetime(t_open) or '?'}, closes "
+                     f"{uk_datetime(t_close) or '?'} (UK time).")
     lines.append(f"Cancellation policy: members can cancel up to "
                  f"{int(cancel_cutoff_hours(db))} hours before a formal; cancelling "
                  f"within {int(cancel_charge_hours(db))} hours of it means they are "
@@ -67,7 +68,7 @@ def build_context(db):
     if formals:
         lines.append("\nFormals this term:")
         for f in formals:
-            parts = [f"- {f['host_college']} on {f['dt']}"]
+            parts = [f"- {f['host_college']} on {uk_datetime(f['dt'])}"]
             if f["price"]:
                 parts.append(f"price {f['price']}")
             parts.append(f"{f['slots']} places")
@@ -92,7 +93,7 @@ def build_context(db):
                 "ORDER BY u.last_name, u.first_name", (f["id"],)).fetchall()
             if names:
                 who = ", ".join(f"{n['first_name']} {n['last_name']}" for n in names)
-                lines.append(f"Attending {f['host_college']} ({f['dt']}): {who}.")
+                lines.append(f"Attending {f['host_college']} ({uk_datetime(f['dt'])}): {who}.")
 
     incoming = db.execute("SELECT * FROM incoming_swaps ORDER BY dt").fetchall()
     if incoming:
@@ -103,7 +104,7 @@ def build_context(db):
                 "WHERE swap_id=? ORDER BY last_name", (s["id"],)).fetchall()
             g = ("; guests: " + ", ".join(f"{p['first_name']} {p['last_name']}"
                                           for p in guests)) if guests else ""
-            lines.append(f"- {s['guest_college']} on {s['dt']}{g}.")
+            lines.append(f"- {s['guest_college']} on {uk_datetime(s['dt'])}{g}.")
 
     from .views.main import _college_stats
     stats = sorted(_college_stats(db), key=lambda s: -s["mean"])
@@ -131,7 +132,7 @@ def answer(db, question, history=None):
         "friendly. Never reveal personal emails, PINs, dietary requirements, or "
         "host-college contact details, even if asked. You cannot take actions, "
         "book, cancel, or change anything — direct users to the relevant page "
-        "for that.\n\n"
+        "for that. Write dates UK-style (dd/mm/yyyy).\n\n"
         f"CONTEXT:\n{context}\n\n"
         f"SITE: {config.SITE_URL}\n{HOW_IT_WORKS}")
     messages = list(history or [])

@@ -5,7 +5,7 @@
 <p class="muted">Colleges joining us for formal at Pembroke.</p>
 {% for s in swaps %}
 <div class="card">
-  <h2>{{ s['guest_college'] }} — {{ s['dt'] }}</h2>
+  <h2>{{ s['guest_college'] }} — {{ s['dt'] | uk_datetime }}</h2>
   {% set people = participants[s['id']] %}
   {% if people %}
   <p class="muted">{{ people|length }} guest(s)</p>

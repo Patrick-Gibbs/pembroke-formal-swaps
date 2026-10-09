@@ -5,7 +5,7 @@
   <tr><th>Member</th><th>Email</th><th>Formal</th><th>Date</th></tr>
   {% for s in rows %}
   <tr><td>{{ s['first_name'] }} {{ s['last_name'] }}</td><td>{{ s['email'] }}</td>
-      <td>{{ s['host_college'] }}</td><td>{{ s['dt'] }}</td></tr>
+      <td>{{ s['host_college'] }}</td><td>{{ s['dt'] | uk_datetime }}</td></tr>
   {% else %}<tr><td colspan="4">None</td></tr>
   {% endfor %}
 </table>
@@ -13,10 +13,10 @@
 <table>
   <tr><th>#</th><th>Formal</th><th>Release at (UTC)</th><th>To everyone at (UTC)</th><th>Opened</th><th>Claimed by user</th><th>Claimed at</th></tr>
   {% for r in releases %}
-  <tr><td>{{ r['id'] }}</td><td>{{ r['host_college'] }}</td><td>{{ 'held (manual)' if r['release_at'] == manual_hold else r['release_at'] }}</td>
-      <td>{{ 'held (manual)' if r['general_at'] == manual_hold else (r['general_at'] or '—') }}</td>
+  <tr><td>{{ r['id'] }}</td><td>{{ r['host_college'] }}</td><td>{{ 'held (manual)' if r['release_at'] == manual_hold else r['release_at'] | uk_datetime }}</td>
+      <td>{{ 'held (manual)' if r['general_at'] == manual_hold else ((r['general_at'] | uk_datetime) or '—') }}</td>
       <td>{{ '✓' if r['opened'] else 'pending' }}</td>
-      <td>{{ r['claimed_by'] or '—' }}</td><td>{{ r['claimed_at'] or '—' }}</td></tr>
+      <td>{{ r['claimed_by'] or '—' }}</td><td>{{ (r['claimed_at'] | uk_datetime) or '—' }}</td></tr>
   {% else %}<tr><td colspan="7">None</td></tr>
   {% endfor %}
 </table>

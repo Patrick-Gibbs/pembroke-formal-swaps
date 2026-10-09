@@ -118,7 +118,7 @@
 
 <div id="copy-all-rosters" style="display:none">
   {% for f in formals if f['id'] in rosters %}
-  <p><b>{{ f['host_college'] }} formal — {{ f['dt'] }}{% if f['price'] %} — {{ f['price'] }}{% endif %}
+  <p><b>{{ f['host_college'] }} formal — {{ f['dt'] | uk_datetime }}{% if f['price'] %} — {{ f['price'] }}{% endif %}
   — {{ rosters[f['id']]|length }}/{{ f['slots'] }} attendee(s)</b></p>
   <table border="1" cellpadding="6" style="border-collapse:collapse;border:1px solid #999;font-family:Arial,sans-serif;font-size:13px">
     <tr style="background:#eef3f8"><th>First name</th><th>Last name</th><th>Email</th><th>Dietary requirements</th></tr>
@@ -141,7 +141,7 @@
   <tr>
     <td>{{ f['term'] }}</td>
     <td>{{ f['host_college'] }}</td>
-    <td>{{ f['dt'] }}</td>
+    <td>{{ f['dt'] | uk_datetime }}</td>
     <td>{{ f['slots'] }}</td>
     <td>{{ stats[f['id']]['active'] }}</td>
     <td>{{ stats[f['id']]['free'] }}</td>

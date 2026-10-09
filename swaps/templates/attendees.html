@@ -8,7 +8,7 @@ an email with your result the moment they go out.</p>
 {% elif not data %}<p>No allocated formals yet — lists appear here after the ballot runs.</p>{% endif %}
 {% for f, rows in data %}
 <div class="card">
-  <h2>{{ f['host_college'] }} — {{ f['dt'] }}</h2>
+  <h2>{{ f['host_college'] }} — {{ f['dt'] | uk_datetime }}</h2>
   <p class="muted">{{ rows|length }} attending / {{ f['slots'] }} places</p>
   {% if rows %}
   <table>

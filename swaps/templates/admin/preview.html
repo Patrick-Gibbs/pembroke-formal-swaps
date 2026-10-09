@@ -20,7 +20,7 @@
 {% for f in formals %}
 {% set rows = rosters[f['id']] %}
 <div class="card">
-  <h2>{{ f['host_college'] }} — {{ f['dt'] }}</h2>
+  <h2>{{ f['host_college'] }} — {{ f['dt'] | uk_datetime }}</h2>
   <p class="muted">{{ rows|length }}/{{ f['slots'] }} places filled
     {% if rows|length < f['slots'] %}— <b>{{ f['slots'] - rows|length }} unfilled</b>{% endif %}</p>
   {% if rows %}

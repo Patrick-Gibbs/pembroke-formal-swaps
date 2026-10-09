@@ -4,7 +4,7 @@
 <p><a href="/admin/users">← Users</a></p>
 <h1>{{ u['first_name'] }} {{ u['last_name'] }}</h1>
 <p class="muted">{{ u['email'] }} · {{ 'verified' if u['email_verified'] else 'unverified' }}
-{% if u['manual_registered'] %}· registered by you{% endif %} · joined {{ u['created_at'][:10] }}</p>
+{% if u['manual_registered'] %}· registered by you{% endif %} · joined {{ u['created_at'] | uk_date }}</p>
 
 <div class="card">
   <h3 style="margin-top:.2rem">Preferences — {{ term or 'no term set' }}</h3>
@@ -24,7 +24,7 @@
   {% if shown %}
   <table>
     <tr><th>#</th><th>Formal</th><th>Date</th></tr>
-    {% for r in shown %}<tr><td>{{ r['rank'] }}</td><td>{{ r['host_college'] }}</td><td>{{ r['dt'] }}</td></tr>{% endfor %}
+    {% for r in shown %}<tr><td>{{ r['rank'] }}</td><td>{{ r['host_college'] }}</td><td>{{ r['dt'] | uk_datetime }}</td></tr>{% endfor %}
   </table>
   {% else %}
   <p><b>No formals ranked</b>{% if d['covered_by_leader'] %} by the group leader yet{% endif %}.</p>
@@ -45,8 +45,8 @@
     <tr><th>Formal</th><th>Date</th><th>Status</th><th>How</th></tr>
     {% for a in d['allocations'] %}
     <tr><td><a href="/admin/formals/{{ a['formal_id'] }}/roster">{{ a['host_college'] }}</a></td>
-        <td>{{ a['dt'] }}</td>
-        <td>{{ a['status'] }}{% if a['cancelled_at'] %} <span class="muted">{{ a['cancelled_at'] }}</span>{% endif %}</td>
+        <td>{{ a['dt'] | uk_datetime }}</td>
+        <td>{{ a['status'] }}{% if a['cancelled_at'] %} <span class="muted">{{ a['cancelled_at'] | uk_datetime }}</span>{% endif %}</td>
         <td>{{ a['source'] }}{% if a['inherited_from'] %} <span class="muted">(in place of {{ a['inherited_from'] }})</span>{% endif %}</td></tr>
     {% endfor %}
   </table>
