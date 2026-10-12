@@ -913,7 +913,8 @@ def delete_user_data(conn, user_id):
         conn.execute("DELETE FROM review_photos WHERE review_id IN "
                      "(SELECT id FROM reviews WHERE user_id=?)", (user_id,))
         for t in ("reviews", "preferences", "ballot_caps", "subscriptions",
-                  "auto_subscriptions", "allocations", "ballot_group_members"):
+                  "auto_subscriptions", "release_emails", "allocations",
+                  "ballot_group_members"):
             conn.execute(f"DELETE FROM {t} WHERE user_id=?", (user_id,))  # noqa: S608 fixed names
         # Disband any group this user leads (remove all its members, then the group).
         led = [r["id"] for r in conn.execute(
@@ -1310,64 +1311,61 @@ def send_scheduled_emails(conn, send_reminder, send_review, send_catering=None,
 
 # ------------------------------------------------------------------ release worker step
 
-def _formal_subscriber_emails(conn, formal_id, term, missed_only):
-    """Verified subscribers of a formal who don't already hold a place there.
-    missed_only=True → only those who missed every allocation this term (the
-    priority group); False → only those who DO hold a place elsewhere (the
-    general group, notified after the head start)."""
+def _formal_subscribers(conn, formal_id, term, missed_only):
+    """Verified subscribers of a formal who don't already hold a place there,
+    as (user_id, email). missed_only=True → only those who missed every
+    allocation this term (the priority group); None → everyone eligible."""
     rows = conn.execute(
         "SELECT u.id, u.email FROM subscriptions s JOIN users u ON u.id = s.user_id "
         "WHERE s.formal_id=? AND u.email_verified=1 AND u.id NOT IN "
         "(SELECT user_id FROM allocations WHERE formal_id=? AND status='active')",
         (formal_id, formal_id)).fetchall()
-    out = []
-    for r in rows:
-        if user_missed_all(conn, r["id"], term) == missed_only:
-            out.append(r["email"])
-    return out
+    return [(r["id"], r["email"]) for r in rows
+            if missed_only is None or user_missed_all(conn, r["id"], term)]
 
 
 def open_due_releases(conn, notify):
     """Called periodically. Two-phase release: at release_at, notify the
-    priority group (members who missed all allocations); at general_at (+2h),
-    notify everyone else. `notify(formal_row, [emails])` sends. Returns the
-    number of notifications fired."""
+    priority group (members who missed all allocations); at general_at, notify
+    every other eligible subscriber. Each member is emailed at most once per
+    released place (tracked in release_emails), so the general phase — or an
+    admin "Release to all" after "Release to no-swaps" — skips anyone already
+    told, even if their group changed in between. Recipients are batched into
+    one notify(formal_row, [emails]) call per formal per pass. Returns the
+    number of release phases opened."""
     now = utcnow_str()
     fired = 0
-    # Phase 1 — priority group.
-    for r in conn.execute(
-            "SELECT id, formal_id FROM released_slots "
-            "WHERE release_at <= ? AND notified = 0 AND claimed_by IS NULL",
-            (now,)).fetchall():
-        with immediate(conn):
-            fresh = conn.execute("SELECT notified FROM released_slots WHERE id=?",
-                                 (r["id"],)).fetchone()
-            if fresh["notified"]:
-                continue
-            conn.execute("UPDATE released_slots SET notified=1, opened=1 WHERE id=?",
-                         (r["id"],))
-        formal = conn.execute("SELECT * FROM formals WHERE id=?",
-                              (r["formal_id"],)).fetchone()
-        emails = _formal_subscriber_emails(conn, r["formal_id"], formal["term"], True)
-        if emails:
-            notify(formal, emails)
-        fired += 1
-    # Phase 2 — everyone else, once the head-start window has passed.
-    for r in conn.execute(
-            "SELECT id, formal_id FROM released_slots "
-            "WHERE COALESCE(general_at, release_at) <= ? AND general_notified = 0 "
-            "AND claimed_by IS NULL", (now,)).fetchall():
-        with immediate(conn):
-            fresh = conn.execute("SELECT general_notified FROM released_slots WHERE id=?",
-                                 (r["id"],)).fetchone()
-            if fresh["general_notified"]:
-                continue
-            conn.execute("UPDATE released_slots SET general_notified=1 WHERE id=?",
-                         (r["id"],))
-        formal = conn.execute("SELECT * FROM formals WHERE id=?",
-                              (r["formal_id"],)).fetchone()
-        emails = _formal_subscriber_emails(conn, r["formal_id"], formal["term"], False)
-        if emails:
-            notify(formal, emails)
-        fired += 1
+    batches = {}   # formal_id -> {user_id: email}
+    phases = (
+        # (flag column, due expression, audience: missed_only)
+        ("notified", "release_at", True),
+        ("general_notified", "COALESCE(general_at, release_at)", None),
+    )
+    for flag, due, missed_only in phases:
+        for r in conn.execute(
+                f"SELECT id, formal_id FROM released_slots "  # noqa: S608 - fixed names
+                f"WHERE {due} <= ? AND {flag} = 0 AND claimed_by IS NULL",
+                (now,)).fetchall():
+            term = conn.execute("SELECT term FROM formals WHERE id=?",
+                                (r["formal_id"],)).fetchone()["term"]
+            with immediate(conn):
+                fresh = conn.execute(f"SELECT {flag} FROM released_slots "  # noqa: S608
+                                     f"WHERE id=?", (r["id"],)).fetchone()
+                if fresh[flag]:
+                    continue
+                conn.execute(f"UPDATE released_slots SET {flag}=1, opened=1 "  # noqa: S608
+                             f"WHERE id=?", (r["id"],))
+                told = {x["user_id"] for x in conn.execute(
+                    "SELECT user_id FROM release_emails WHERE slot_id=?", (r["id"],))}
+                for uid, email in _formal_subscribers(conn, r["formal_id"], term,
+                                                      missed_only):
+                    if uid in told:
+                        continue
+                    conn.execute("INSERT INTO release_emails(slot_id, formal_id, user_id) "
+                                 "VALUES (?,?,?)", (r["id"], r["formal_id"], uid))
+                    batches.setdefault(r["formal_id"], {})[uid] = email
+            fired += 1
+    for formal_id, recipients in batches.items():
+        formal = conn.execute("SELECT * FROM formals WHERE id=?", (formal_id,)).fetchone()
+        notify(formal, sorted(recipients.values()))
     return fired

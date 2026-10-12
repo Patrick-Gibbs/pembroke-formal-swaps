@@ -488,7 +488,7 @@ def formal_delete(fid):
               "or set status to cancelled.", "error")
         return redirect(url_for("admin.dashboard"))
     for table in ("preferences", "subscriptions", "auto_subscriptions",
-                  "released_slots"):
+                  "release_emails", "released_slots"):
         db.execute(f"DELETE FROM {table} WHERE formal_id=?", (fid,))  # noqa: S608 - fixed table names
     db.execute("DELETE FROM allocations WHERE formal_id=?", (fid,))
     db.execute("DELETE FROM formals WHERE id=?", (fid,))

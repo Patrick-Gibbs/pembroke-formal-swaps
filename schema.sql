@@ -82,6 +82,17 @@ CREATE TABLE IF NOT EXISTS released_slots (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Who has been emailed about each released place, so a later phase (or the
+-- admin's "Release to all") never emails the same member twice for it.
+-- No FK constraints: rows are cleaned up with their formal/user.
+CREATE TABLE IF NOT EXISTS release_emails (
+    slot_id INTEGER NOT NULL,        -- released_slots.id
+    formal_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    sent_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (slot_id, user_id)
+);
+
 CREATE TABLE IF NOT EXISTS subscriptions (
     id INTEGER PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id),

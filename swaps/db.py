@@ -24,6 +24,9 @@ def init_db(db_path=None):
     path = db_path or config.DB_PATH
     os.makedirs(os.path.dirname(path), exist_ok=True)
     conn = connect(path)
+    had_release_emails = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='release_emails'"
+    ).fetchone() is not None
     with open(SCHEMA_PATH) as f:
         conn.executescript(f.read())
     # Columns added after first deployment (CREATE IF NOT EXISTS won't add them).
@@ -83,7 +86,24 @@ def init_db(db_path=None):
         conn.execute("INSERT INTO review_photos(review_id, filename) VALUES (?,?)",
                      (r["id"], r["photo"]))
         conn.execute("UPDATE reviews SET photo='' WHERE id=?", (r["id"],))
+    if not had_release_emails:
+        _backfill_release_emails(conn)
     conn.close()
+
+
+def _backfill_release_emails(conn):
+    """One-off, when release_emails is first created: places already opened to
+    the no-swaps group but not yet to everyone predate the tracking, so record
+    that group (as the old code reckoned it) as told — "Release to all" then
+    won't email them a second time."""
+    from .services import _formal_subscribers
+    for r in conn.execute(
+            "SELECT s.id, s.formal_id, f.term FROM released_slots s "
+            "JOIN formals f ON f.id = s.formal_id WHERE s.notified=1 "
+            "AND s.general_notified=0 AND s.claimed_by IS NULL").fetchall():
+        for uid, _ in _formal_subscribers(conn, r["formal_id"], r["term"], True):
+            conn.execute("INSERT OR IGNORE INTO release_emails(slot_id, formal_id, "
+                         "user_id) VALUES (?,?,?)", (r["id"], r["formal_id"], uid))
 
 
 def get_db():
