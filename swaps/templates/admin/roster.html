@@ -24,8 +24,11 @@
       </form>{% endif %}
       {% if held %}
       <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/release"
-            data-confirm="Release {{ held }} waiting place(s) at {{ f['host_college'] }} now to EVERYONE? All subscribers are emailed straight away." onsubmit="return confirm(this.dataset.confirm)">
+            data-confirm="Release {{ held }} waiting place(s) at {{ f['host_college'] }} now to EVERYONE? Subscribers not already emailed about it are emailed straight away."
+            data-confirm-silent="Release {{ held }} waiting place(s) at {{ f['host_college'] }} now to EVERYONE, WITHOUT emailing anyone?"
+            onsubmit="return confirm(this.email.checked ? this.dataset.confirm : this.dataset.confirmSilent)">
         <input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="to" value="all">
+        <label class="muted" style="font-weight:normal;display:inline"><input type="checkbox" name="email" value="1" checked> Email subscribers</label>
         <button class="small">Release to all ({{ held }})</button>
       </form>{% endif %}
   <a class="btn ghost" href="/admin/">Back</a>

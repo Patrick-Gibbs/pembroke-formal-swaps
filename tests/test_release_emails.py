@@ -81,3 +81,49 @@ def test_backfill_for_places_half_released_before_tracking(tmp_path):
     assert sorted(r[0] for r in db.execute("SELECT user_id FROM release_emails")) == [20, 21]
     release_now(db, 1, everyone=True)
     assert _sent(db) == [GENERAL]
+
+
+def test_release_all_without_email_tells_nobody(db):
+    _setup(db, places=2)
+    assert release_now(db, 1, everyone=True, email=False) == 2
+    assert _sent(db) == []
+    claim_seat(db, 10, 1)       # still genuinely open to everyone
+
+
+def test_release_all_without_email_after_noswaps(db):
+    _setup(db)
+    release_now(db, 1, everyone=False)
+    assert _sent(db) == [NOSWAPS]
+    release_now(db, 1, everyone=True, email=False)
+    assert _sent(db) == []
+
+
+def test_release_route_email_choice(db_path, monkeypatch):
+    import importlib
+    monkeypatch.setenv("DB_PATH", db_path); monkeypatch.setenv("COOKIE_SECURE", "0")
+    from swaps import config as cfg
+    importlib.reload(cfg)
+    from swaps import create_app
+    app = create_app(); app.config["TESTING"] = True
+    db = connect(db_path)
+    _setup(db, places=2)
+    adm = app.test_client()
+    with adm.session_transaction() as s:
+        s["is_admin"] = True; s["_csrf"] = "tok"
+    page = adm.get("/admin/formals/1/roster").data.decode()
+    assert 'name="email" value="1" checked' in page and "WITHOUT emailing" in page
+    # Unticked: released, but no one emailed.
+    r = adm.post("/admin/formals/1/release", data={"_csrf": "tok", "to": "all"},
+                 follow_redirects=True)
+    assert "nobody was emailed" in r.data.decode()
+    assert _sent(db) == []
+    # Ticked: a later cancellation's place is announced as usual.
+    cancel_allocation(db, 10, db.execute(
+        "SELECT id FROM allocations WHERE user_id=10").fetchone()["id"])
+    db.execute("UPDATE formals SET slots=3 WHERE id=1")
+    claim_seat(db, 10, 1)
+    cancel_allocation(db, 10, db.execute(
+        "SELECT id FROM allocations WHERE user_id=10 AND formal_id=1 AND status='active'"
+    ).fetchone()["id"])
+    adm.post("/admin/formals/1/release", data={"_csrf": "tok", "to": "all", "email": "1"})
+    assert _sent(db) == [sorted(GENERAL + NOSWAPS)]

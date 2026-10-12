@@ -152,14 +152,23 @@ def pending_holds(conn, formal_id, priority=False):
         (formal_id, now)).fetchone()["n"]
 
 
-def release_now(conn, formal_id, everyone):
+def release_now(conn, formal_id, everyone, email=True):
     """Admin override: open a formal's waiting (cancelled, not yet released)
     places immediately — to members who missed out (everyone=False) or to all
     members (everyone=True). The release worker emails the matching subscribers
-    on its next pass. Returns the number of places affected."""
+    on its next pass, unless email=False (release-to-all only): the places are
+    then marked as already announced, so nobody is emailed about them. Returns
+    the number of places affected."""
     now = utcnow_str()
     with immediate(conn):
         if everyone:
+            ids = [r["id"] for r in conn.execute(
+                "SELECT id FROM released_slots WHERE formal_id=? AND claimed_by IS NULL "
+                "AND COALESCE(general_at, release_at) > ?", (formal_id, now))]
+            if not email:
+                conn.executemany("UPDATE released_slots SET notified=1, "
+                                 "general_notified=1, opened=1 WHERE id=?",
+                                 [(i,) for i in ids])
             n = conn.execute(
                 "UPDATE released_slots SET release_at=MIN(release_at, ?), general_at=? "
                 "WHERE formal_id=? AND claimed_by IS NULL "
@@ -171,7 +180,8 @@ def release_now(conn, formal_id, everyone):
                 "AND claimed_by IS NULL AND release_at > ?",
                 (now, formal_id, now)).rowcount
         audit(conn, "admin", "release_now",
-              f"formal={formal_id} to={'everyone' if everyone else 'no-swaps'} places={n}")
+              f"formal={formal_id} to={'everyone' if everyone else 'no-swaps'} places={n}"
+              + ("" if email or not everyone else " no-email"))
     return n
 
 

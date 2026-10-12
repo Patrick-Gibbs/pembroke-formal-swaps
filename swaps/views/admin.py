@@ -859,10 +859,13 @@ def release_formal(fid):
     from ..services import release_now
     db = get_db()
     everyone = request.form.get("to") == "all"
-    n = release_now(db, fid, everyone)
+    # Release-to-all has an "Email subscribers" tick box; no-swaps always emails.
+    email = not everyone or request.form.get("email") == "1"
+    n = release_now(db, fid, everyone, email=email)
     if n:
         flash(f"Released {n} place(s) to {'everyone' if everyone else 'members with no swaps'}"
-              " — matching subscribers are emailed within a minute.", "ok")
+              + (" — matching subscribers are emailed within a minute." if email
+                 else " — nobody was emailed."), "ok")
     else:
         flash("Nothing waiting to release.", "error")
     back = request.form.get("back") == "dashboard"
