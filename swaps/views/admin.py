@@ -809,6 +809,26 @@ def roster(fid):
                            release_mode=release_mode(db))
 
 
+def _confirm_admin_assign(db, uid, fid, inherited):
+    """Email the member their place (with calendar invite) and mark it notified
+    so publishing results doesn't send it again. While the term's results are
+    still a draft, leave it for the publish email instead. Returns a note for
+    the admin."""
+    from .. import emailer
+    from ..ics import formal_ics
+    f = db.execute("SELECT * FROM formals WHERE id=?", (fid,)).fetchone()
+    u = db.execute("SELECT email FROM users WHERE id=?", (uid,)).fetchone()
+    if (f["term"] == get_setting(db, "current_term")
+            and get_setting(db, "results_published", "1") != "1"):
+        return "Results are still a draft, so they'll get their email when you publish."
+    ics = [(f"{f['host_college']}-formal.ics", formal_ics(f).encode())]
+    if not emailer.admin_assigned_email(u["email"], f, ics, inherited):
+        return "⚠️ The confirmation email failed to send — see the email log."
+    db.execute("UPDATE allocations SET notified=1 WHERE user_id=? AND formal_id=? "
+               "AND status='active'", (uid, fid))
+    return "They've been emailed a confirmation with a calendar invite."
+
+
 @bp.route("/formals/<int:fid>/add-user", methods=["POST"])
 @admin_required
 def add_user(fid):
@@ -828,6 +848,7 @@ def add_user(fid):
         if inherited:
             msg += (f" The host list was already sent, so they take {inherited['replaced']}'s "
                     f"meal: {inherited['dietary']}.")
+        msg += " " + _confirm_admin_assign(db, uid, fid, inherited)
         flash(msg, "ok")
     except ClaimError as e:
         flash(str(e), "error")

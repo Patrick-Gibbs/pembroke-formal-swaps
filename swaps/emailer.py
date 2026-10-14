@@ -364,6 +364,33 @@ def catering_email(to, cc, formal, rows, admin_name=""):
     return send(to, subject, html, cc=cc, reply_to=cc)
 
 
+def admin_assigned_email(to, formal, ics_files, inherited=None):
+    """Confirmation for a member the admin has put into a formal. inherited:
+    {replaced, dietary} when they took a seat after the host list went out."""
+    extra = ""
+    if inherited:
+        extra += (f"<p>You're taking the place of <b>{inherited['replaced']}</b>. The host "
+                  f"college already has the final catering list, so your meal is fixed "
+                  f"to the one ordered for this place: <b>{inherited['dietary']}</b>. "
+                  f"If that won't work for you, please contact the swaps officer.</p>")
+    try:
+        wine_fee, wine_price = formal["wine_fee"], formal["wine_price"]
+    except (KeyError, IndexError):
+        wine_fee, wine_price = 0, ""
+    if wine_fee:
+        extra += (f"<p>🍷 Wine is an extra fee{f' ({wine_price})' if wine_price else ''}. "
+                  f"You're down for wine — you can opt out under My formals.</p>")
+    return send(
+        to, f"You're in — {formal['host_college']} formal on {uk_datetime(formal['dt'])}",
+        f"<p>The swaps officer has given you a place at this formal:</p>"
+        f"{_formal_block(formal)}{extra}"
+        f"<p>A calendar invitation is attached — open it to add the formal to "
+        f"your calendar.</p>"
+        f"<p>Manage your places (or cancel, up until the cut-off) at "
+        f"<a href=\"{config.SITE_URL}/me\">{config.SITE_URL}/me</a>.</p>",
+        attachments=ics_files)
+
+
 def claim_inherited_email(to, formal, replaced, dietary):
     return send(
         to, f"You're in — {formal['host_college']} formal on {uk_datetime(formal['dt'])}",
