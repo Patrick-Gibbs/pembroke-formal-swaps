@@ -74,6 +74,11 @@ def init_db(db_path=None):
         conn.execute("ALTER TABLE released_slots ADD COLUMN orig_name TEXT")
     if "orig_dietary" not in rscols:
         conn.execute("ALTER TABLE released_slots ADD COLUMN orig_dietary TEXT")
+    if "orig_alloc" not in rscols:
+        conn.execute("ALTER TABLE released_slots ADD COLUMN orig_alloc INTEGER")
+    if "inherited_from_alloc" not in acols:
+        conn.execute("ALTER TABLE allocations ADD COLUMN inherited_from_alloc INTEGER")
+        _repair_inherited_chains(conn)
     ucols = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
     if "calendar_token" not in ucols:
         conn.execute("ALTER TABLE users ADD COLUMN calendar_token TEXT")
@@ -89,6 +94,34 @@ def init_db(db_path=None):
     if not had_release_emails:
         _backfill_release_emails(conn)
     conn.close()
+
+
+def _repair_inherited_chains(conn):
+    """One-off: seats taken over more than once after the host list went out
+    used to name the previous claimer ("in place of B"), not the person on
+    the host's list (A). Walk each chain in order and point every link back
+    at the original person."""
+    for s in conn.execute("SELECT id, formal_id, allocation_id, orig_name, claimed_by "
+                          "FROM released_slots ORDER BY id").fetchall():
+        src = conn.execute("SELECT inherited_from, inherited_from_alloc FROM allocations "
+                           "WHERE id=?", (s["allocation_id"],)).fetchone()
+        if src is not None and src["inherited_from"] is not None:
+            name, orig = src["inherited_from"], src["inherited_from_alloc"]
+        else:
+            name, orig = s["orig_name"], s["allocation_id"]
+        conn.execute("UPDATE released_slots SET orig_name=?, orig_alloc=? WHERE id=?",
+                     (name, orig, s["id"]))
+        if s["claimed_by"] is None or s["orig_name"] is None:
+            continue
+        # The claimer's seat (they took on this slot's old name at the time).
+        claim = conn.execute(
+            "SELECT id FROM allocations WHERE user_id=? AND formal_id=? "
+            "AND inherited_from=? AND id > ? ORDER BY id LIMIT 1",
+            (s["claimed_by"], s["formal_id"], s["orig_name"],
+             s["allocation_id"] or 0)).fetchone()
+        if claim is not None:
+            conn.execute("UPDATE allocations SET inherited_from=?, inherited_from_alloc=? "
+                         "WHERE id=?", (name, orig, claim["id"]))
 
 
 def _backfill_release_emails(conn):

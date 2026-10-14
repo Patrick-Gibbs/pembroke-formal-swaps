@@ -57,7 +57,8 @@ CREATE TABLE IF NOT EXISTS allocations (
     status TEXT NOT NULL DEFAULT 'active',   -- active | cancelled
     source TEXT NOT NULL DEFAULT 'ballot',   -- ballot | claim | admin
     inherited_dietary TEXT,                  -- frozen dietary if claimed after list sent
-    inherited_from TEXT,                     -- name of the person this seat replaced
+    inherited_from TEXT,                     -- person on the host's list this seat replaced
+    inherited_from_alloc INTEGER,            -- their allocation (for erasure/chains)
     wine_opt_out INTEGER NOT NULL DEFAULT 0, -- 1 = no wine (formals with a wine fee)
     notified INTEGER NOT NULL DEFAULT 0,     -- result email sent (at publish)
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -74,6 +75,7 @@ CREATE TABLE IF NOT EXISTS released_slots (
     general_at TEXT,                 -- UTC; everyone else can take it from here (+2h)
     orig_name TEXT,                  -- who dropped out (snapshot at cancel time)
     orig_dietary TEXT,               -- their dietary, frozen for the host's list
+    orig_alloc INTEGER,              -- allocation of the person on the host's list
     opened INTEGER NOT NULL DEFAULT 0,
     notified INTEGER NOT NULL DEFAULT 0,        -- priority subscribers notified
     general_notified INTEGER NOT NULL DEFAULT 0, -- everyone else notified

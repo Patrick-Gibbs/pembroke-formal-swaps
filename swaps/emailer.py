@@ -341,7 +341,9 @@ def catering_email(to, cc, formal, rows, admin_name=""):
     th = "<th style='border:1px solid #ccc;padding:4px 8px;text-align:left'>"
     wine = any(r.get("wine") is not None for r in rows)
     body = "".join(
-        f"<tr>{td}{r['first_name']} {r['last_name']}</td>{td}{r['dietary']}</td>"
+        f"<tr>{td}{r['first_name']} {r['last_name']}"
+        + (f" <i>(in place of {r['replaces']})</i>" if r.get("replaces") else "")
+        + f"</td>{td}{r['dietary']}</td>"
         + (f"{td}{r['wine']}</td>" if wine else "") + "</tr>"
         for r in rows)
     tally = {}

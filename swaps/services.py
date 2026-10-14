@@ -916,7 +916,12 @@ def delete_user_data(conn, user_id):
         # Erase the leaver's name from any seat snapshot (the frozen dietary
         # stays: the host's list depends on it).
         conn.execute("UPDATE released_slots SET orig_name='a member who cancelled' "
-                     "WHERE orig_name IS NOT NULL AND allocation_id IN "
+                     "WHERE orig_name IS NOT NULL AND (allocation_id IN "
+                     "(SELECT id FROM allocations WHERE user_id=?) OR orig_alloc IN "
+                     "(SELECT id FROM allocations WHERE user_id=?))", (user_id, user_id))
+        # … including later claimers who took over a seat that was theirs.
+        conn.execute("UPDATE allocations SET inherited_from='a member who cancelled' "
+                     "WHERE inherited_from_alloc IN "
                      "(SELECT id FROM allocations WHERE user_id=?)", (user_id,))
         conn.execute("UPDATE released_slots SET allocation_id=NULL WHERE allocation_id "
                      "IN (SELECT id FROM allocations WHERE user_id=?)", (user_id,))
@@ -1094,16 +1099,24 @@ def cancel_allocation(conn, user_id, allocation_id, rng=None, actor=None):
         # Snapshot who dropped and their dietary. If the host list has already
         # gone out, whoever claims this seat inherits this dietary (the host
         # can't re-cater), so keep the frozen dietary they held for this seat.
-        orig_name = f"{alloc['first_name']} {alloc['last_name']}"
+        # If this seat was itself taken over after the list went out, the
+        # person on the host's list is whoever it was inherited from — keep
+        # naming them, however many times the seat changes hands.
+        if alloc["inherited_from"] is not None:
+            orig_name = alloc["inherited_from"]
+            orig_alloc = alloc["inherited_from_alloc"]
+        else:
+            orig_name = f"{alloc['first_name']} {alloc['last_name']}"
+            orig_alloc = allocation_id
         orig_diet = resolve_dietary(alloc["inherited_dietary"], alloc["dietary_flags"],
                                     alloc["dietary_other"])
         conn.execute("UPDATE allocations SET status='cancelled', cancelled_at=? WHERE id=?",
                      (utcnow_str(), allocation_id))
         conn.execute(
             "INSERT INTO released_slots(formal_id, allocation_id, release_at, general_at, "
-            "orig_name, orig_dietary) VALUES (?,?,?,?,?,?)",
+            "orig_name, orig_dietary, orig_alloc) VALUES (?,?,?,?,?,?,?)",
             (alloc["formal_id"], allocation_id, release_at, general_at,
-             orig_name, orig_diet))
+             orig_name, orig_diet, orig_alloc))
         audit(conn, actor or f"user:{alloc['user_id']}", "cancel",
               f"allocation={allocation_id} formal={alloc['formal_id']} "
               f"release_at={release_at}Z general_at={general_at}Z"
@@ -1168,13 +1181,13 @@ def claim_seat(conn, user_id, formal_id, actor=None, override_holds=False,
         # seat may also be free simply because the ballot didn't fill it).
         if take_held:   # any unclaimed released place, soonest-due first
             row = conn.execute(
-                "SELECT id, orig_name, orig_dietary FROM released_slots WHERE "
-                "formal_id=? AND claimed_by IS NULL ORDER BY release_at LIMIT 1",
+                "SELECT id, orig_name, orig_dietary, orig_alloc FROM released_slots "
+                "WHERE formal_id=? AND claimed_by IS NULL ORDER BY release_at LIMIT 1",
                 (formal_id,)).fetchone()
         else:
             avail = "release_at" if priority else "COALESCE(general_at, release_at)"
             row = conn.execute(
-                f"SELECT id, orig_name, orig_dietary FROM released_slots "  # noqa: S608
+                f"SELECT id, orig_name, orig_dietary, orig_alloc FROM released_slots "  # noqa: S608
                 f"WHERE formal_id=? AND claimed_by IS NULL AND {avail} <= ? "
                 f"ORDER BY release_at LIMIT 1", (formal_id, utcnow_str())).fetchone()
         inherited = None
@@ -1185,8 +1198,9 @@ def claim_seat(conn, user_id, formal_id, actor=None, override_holds=False,
             # person's — the claimer takes their catering slot as-is.
             if f["catering_sent"] and row["orig_dietary"] is not None:
                 conn.execute("UPDATE allocations SET inherited_dietary=?, "
-                             "inherited_from=? WHERE id=?",
-                             (row["orig_dietary"], row["orig_name"], alloc_id))
+                             "inherited_from=?, inherited_from_alloc=? WHERE id=?",
+                             (row["orig_dietary"], row["orig_name"], row["orig_alloc"],
+                              alloc_id))
                 inherited = {"replaced": row["orig_name"],
                              "dietary": row["orig_dietary"]}
         audit(conn, actor or f"user:{user_id}", "claim",
@@ -1205,13 +1219,15 @@ def attendee_emails(conn, formal_id):
 def catering_list(conn, formal_id):
     """Active attendees of a formal with resolved dietary (for the host). Each
     row is a dict with first_name, last_name, dietary (a single resolved string
-    that respects a seat's frozen/inherited dietary) and wine ("Yes"/"No", or
-    None when the formal has no wine fee)."""
+    that respects a seat's frozen/inherited dietary), replaces (the person on
+    the original host list whose seat this is, or None) and wine ("Yes"/"No",
+    or None when the formal has no wine fee)."""
     wine = conn.execute("SELECT wine_fee FROM formals WHERE id=?",
                         (formal_id,)).fetchone()
     wine = bool(wine and wine["wine_fee"])
     rows = conn.execute(
-        "SELECT u.first_name, u.last_name, a.inherited_dietary, a.wine_opt_out, "
+        "SELECT u.first_name, u.last_name, a.inherited_dietary, a.inherited_from, "
+        "a.wine_opt_out, "
         "u.dietary_flags, u.dietary_other FROM allocations a "
         "JOIN users u ON u.id = a.user_id "
         "WHERE a.formal_id=? AND a.status='active' "
@@ -1220,6 +1236,7 @@ def catering_list(conn, formal_id):
     return [{"first_name": r["first_name"], "last_name": r["last_name"],
              "dietary": resolve_dietary(r["inherited_dietary"], r["dietary_flags"],
                                         r["dietary_other"]),
+             "replaces": r["inherited_from"],
              "wine": ("No" if r["wine_opt_out"] else "Yes") if wine else None}
             for r in rows]
 
