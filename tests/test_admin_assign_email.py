@@ -72,3 +72,21 @@ def test_admin_assign_after_list_sent_mentions_fixed_meal(db_path, monkeypatch):
     page, mail = _add(_app(db_path, monkeypatch), 1, 2)
     assert "taking the place of <b>U1 Test</b>" in mail and "Vegan" in mail
     assert "College1-formal.ics" in mail
+
+
+def test_admin_can_add_inside_cutoff_but_members_cannot(db):
+    from datetime import datetime, timedelta
+
+    import pytest
+
+    from swaps.services import ClaimError, claim_seat
+    add_user(db, 1); add_user(db, 2)
+    soon = (datetime.now() + timedelta(hours=3)).strftime("%Y-%m-%d %H:%M")
+    started = (datetime.now() - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M")
+    add_formal(db, 1, slots=3, dt=soon)
+    add_formal(db, 2, slots=3, dt=started)
+    with pytest.raises(ClaimError, match="Claims close"):
+        claim_seat(db, 1, 1)
+    claim_seat(db, 1, 1, actor="admin", override_holds=True)
+    with pytest.raises(ClaimError, match="already started"):
+        claim_seat(db, 2, 2, actor="admin", override_holds=True)

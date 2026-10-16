@@ -98,6 +98,6 @@
     <button>Add to this formal</button>
   </form>
   <p class="muted">To move someone between formals: add them to the new one, then remove them here.
-  Admin removals bypass the cancellation cut-off; {% if release_mode == 'manual' %}the freed seat is held until you release or assign it (manual release mode).{% else %}the freed seat still releases automatically at a random time.{% endif %}</p>
+  Admin adds (until the formal starts) and removals bypass the claim/cancel cut-off; {% if release_mode == 'manual' %}the freed seat is held until you release or assign it (manual release mode).{% else %}the freed seat still releases automatically at a random time.{% endif %}</p>
 </div>
 {% endblock %}

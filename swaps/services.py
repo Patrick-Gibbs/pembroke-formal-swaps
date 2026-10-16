@@ -1138,7 +1138,8 @@ def claim_seat(conn, user_id, formal_id, actor=None, override_holds=False,
     and this claim takes a released seat, a dict {replaced, dietary} — the seat's
     frozen dietary the claimer inherits (the host can't re-cater).
 
-    override_holds (admin only): may also take a cancelled place that hasn't
+    override_holds (admin only): ignores the claim cut-off (until the formal
+    starts) and may also take a cancelled place that hasn't
     been publicly released yet (or is in its head-start window). It's marked
     claimed, so it's never released and nobody is notified about it.
 
@@ -1150,7 +1151,10 @@ def claim_seat(conn, user_id, formal_id, actor=None, override_holds=False,
         if f is None:
             raise ClaimError("This formal is not available.")
         cutoff = cancel_cutoff_hours(conn)
-        if hours_until_formal(f["dt"]) < cutoff:
+        if override_holds:          # admin: allowed right up to the start
+            if hours_until_formal(f["dt"]) <= 0:
+                raise ClaimError("This formal has already started.")
+        elif hours_until_formal(f["dt"]) < cutoff:
             raise ClaimError(f"Claims close {int(cutoff)} hours before the formal.")
         already = conn.execute(
             "SELECT 1 FROM allocations WHERE user_id=? AND formal_id=? AND status='active'",
