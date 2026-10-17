@@ -7,7 +7,7 @@ from flask import (Blueprint, Response, flash, redirect, render_template,
 
 from .. import config
 from ..dates import from_uk, uk_datetime
-from ..db import get_db, get_setting, set_setting, audit
+from ..db import audit, get_db, get_setting, immediate, set_setting
 from ..security import (admin_required, client_ip, ip_blocked,
                         lockout_remaining, record_attempt, verify_secret)
 from ..services import (CancelError, ClaimError, auto_subscribe_unmet,
@@ -480,6 +480,7 @@ def formal_edit(fid):
 @bp.route("/formals/<int:fid>/delete", methods=["POST"])
 @admin_required
 def formal_delete(fid):
+    import os
     db = get_db()
     n = db.execute("SELECT COUNT(*) n FROM allocations WHERE formal_id=? AND "
                    "status='active'", (fid,)).fetchone()["n"]
@@ -487,12 +488,28 @@ def formal_delete(fid):
         flash(f"Refusing to delete: {n} active allocation(s). Cancel them first "
               "or set status to cancelled.", "error")
         return redirect(url_for("admin.dashboard"))
-    for table in ("preferences", "subscriptions", "auto_subscriptions",
-                  "release_emails", "released_slots"):
-        db.execute(f"DELETE FROM {table} WHERE formal_id=?", (fid,))  # noqa: S608 - fixed table names
-    db.execute("DELETE FROM allocations WHERE formal_id=?", (fid,))
-    db.execute("DELETE FROM formals WHERE id=?", (fid,))
-    audit(db, "admin", "formal_delete", f"id={fid}")
+    photos = [r["filename"] for r in db.execute(
+        "SELECT rp.filename FROM review_photos rp JOIN reviews r ON r.id=rp.review_id "
+        "WHERE r.formal_id=?", (fid,))]
+    photos += [r["photo"] for r in db.execute(
+        "SELECT photo FROM reviews WHERE formal_id=? AND photo != ''", (fid,))]
+    # One transaction: everything that references the formal goes, or nothing.
+    with immediate(db):
+        db.execute("DELETE FROM review_photos WHERE review_id IN "
+                   "(SELECT id FROM reviews WHERE formal_id=?)", (fid,))
+        for table in ("reviews", "preferences", "subscriptions", "auto_subscriptions",
+                      "release_emails", "released_slots"):
+            db.execute(f"DELETE FROM {table} WHERE formal_id=?", (fid,))  # noqa: S608 - fixed table names
+        db.execute("DELETE FROM swap_requests WHERE from_formal=? OR to_formal=?",
+                   (fid, fid))
+        db.execute("DELETE FROM allocations WHERE formal_id=?", (fid,))
+        db.execute("DELETE FROM formals WHERE id=?", (fid,))
+        audit(db, "admin", "formal_delete", f"id={fid}")
+    for name in photos:
+        try:
+            os.remove(os.path.join(config.PHOTOS_DIR, name))
+        except OSError:
+            pass
     flash("Deleted.", "ok")
     return redirect(url_for("admin.dashboard"))
 
