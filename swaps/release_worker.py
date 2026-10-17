@@ -15,10 +15,26 @@ log = logging.getLogger("swaps.release")
 POLL_SECONDS = 30
 
 
+def _fixed_meal(formal):
+    """The one meal every open place at this formal is fixed to (host list
+    already sent), or None if there's none or they differ."""
+    if not formal["catering_sent"]:
+        return None
+    conn = connect()
+    try:
+        meals = {r["orig_dietary"] for r in conn.execute(
+            "SELECT orig_dietary FROM released_slots WHERE formal_id=? "
+            "AND claimed_by IS NULL AND opened=1", (formal["id"],))}
+    finally:
+        conn.close()
+    return meals.pop() if len(meals) == 1 and None not in meals else None
+
+
 def _notify(formal, emails):
     link = f"{config.SITE_URL}/formals/{formal['id']}/claim"
+    meal = _fixed_meal(formal)
     for email in emails:
-        emailer.slot_open_email(email, formal, link)
+        emailer.slot_open_email(email, formal, link, meal)
     log.info("Released slot for formal %s (%s); notified %d subscriber(s)",
              formal["id"], formal["host_college"], len(emails))
 

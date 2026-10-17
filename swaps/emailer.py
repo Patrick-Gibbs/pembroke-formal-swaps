@@ -255,9 +255,17 @@ def group_invite_email(to, leader_name, term, link):
         f"<p><a href=\"{link}\">Accept or decline the invitation here</a>.</p>")
 
 
-def slot_open_email(to, formal, link):
+def slot_open_email(to, formal, link, fixed_meal=None):
+    """fixed_meal: the meal ordered for the open place(s), when the host already
+    has the final list and every open place carries the same one."""
     subject, body = _render_template("slot_open", {
         "host_college": formal["host_college"], "dt": uk_datetime(formal["dt"]), "link": link})
+    if formal["catering_sent"]:
+        # Added outside the editable template so it can't be lost by an override.
+        body += ("<p>⚠️ The host college already has the final catering list, so "
+                 "whoever claims this place takes on the meal already ordered for it"
+                 + (f": <b>{fixed_meal}</b>" if fixed_meal else "")
+                 + ". Only claim if that works for you.</p>")
     return send(to, subject, body)
 
 
