@@ -399,6 +399,21 @@ def admin_assigned_email(to, formal, ics_files, inherited=None):
         attachments=ics_files)
 
 
+def date_change_email(to, formal, old_dt, ics_files):
+    """Tell an attendee their formal has moved; the attached invite (same UID,
+    higher SEQUENCE) updates the event already in their calendar."""
+    return send(
+        to, f"Time change — {formal['host_college']} formal now {uk_datetime(formal['dt'])}",
+        f"<p>The <b>{formal['host_college']}</b> formal you have a place at has moved:</p>"
+        f"<p>Was: <s>{uk_datetime(old_dt)}</s><br>Now: <b>{uk_datetime(formal['dt'])}</b></p>"
+        f"{_formal_block(formal)}"
+        f"<p>An updated calendar invitation is attached — open it to update the "
+        f"event in your calendar.</p>"
+        f"<p>If you can no longer make it, manage your place at "
+        f"<a href=\"{config.SITE_URL}/me\">{config.SITE_URL}/me</a>.</p>",
+        attachments=ics_files)
+
+
 def claim_inherited_email(to, formal, replaced, dietary):
     return send(
         to, f"You're in — {formal['host_college']} formal on {uk_datetime(formal['dt'])}",

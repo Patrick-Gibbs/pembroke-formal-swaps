@@ -470,11 +470,37 @@ def formal_edit(fid):
                    vals + (fid,))
         _remember_endowment(db, vals[0], vals[13])
         audit(db, "admin", "formal_edit", f"id={fid} {vals[0]} {vals[1]}")
-        flash("Saved.", "ok")
+        msg = "Saved."
+        if parse_local(vals[1]) != parse_local(f["dt"]):
+            db.execute("UPDATE formals SET ics_seq=ics_seq+1 WHERE id=?", (fid,))
+            if request.form.get("notify_date_change") == "1":
+                msg += " " + _email_date_change(db, fid, f["dt"])
+        flash(msg, "ok")
         return redirect(url_for("admin.dashboard"))
     return render_template("admin/formal_form.html", f=f, default_term=f["term"],
                            catering_date=_catering_date_value(f),
                            endowments=_endowment_map(db))
+
+
+def _email_date_change(db, fid, old_dt):
+    """Email every attendee the new time with an updated invite. While the
+    term's results are still a draft attendees don't know yet, so skip (the
+    publish email carries the new time). Returns a note for the admin."""
+    from .. import emailer
+    from ..ics import formal_ics
+    from ..services import attendee_emails
+    f = db.execute("SELECT * FROM formals WHERE id=?", (fid,)).fetchone()
+    if (f["term"] == get_setting(db, "current_term")
+            and get_setting(db, "results_published", "1") != "1"):
+        return "Results are still a draft, so attendees weren't emailed."
+    emails = attendee_emails(db, fid)
+    if not emails:
+        return "No attendees to email."
+    ics = [(f"{f['host_college']}-formal.ics", formal_ics(f).encode())]
+    failed = sum(1 for e in emails if not emailer.date_change_email(e, f, old_dt, ics))
+    audit(db, "admin", "date_change_email", f"formal={fid} sent={len(emails) - failed}")
+    return (f"Emailed {len(emails) - failed} attendee(s) the new time with an updated "
+            f"calendar invite." + (f" ⚠️ {failed} failed — see the email log." if failed else ""))
 
 
 @bp.route("/formals/<int:fid>/delete", methods=["POST"])

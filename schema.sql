@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS formals (
     catering_at TEXT,                           -- when to email host (overrides lead days)
     wine_fee INTEGER NOT NULL DEFAULT 0,        -- 1 = wine is an additional fee
     wine_price TEXT NOT NULL DEFAULT '',        -- e.g. '£6' (optional)
+    ics_seq INTEGER NOT NULL DEFAULT 0,         -- calendar SEQUENCE; bumped on date change
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

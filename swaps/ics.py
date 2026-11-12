@@ -18,6 +18,15 @@ def _utc(dt_local):
     return dt_local.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
+def _seq(formal):
+    """Calendar SEQUENCE: bumped when the formal's time changes, so calendar
+    apps replace the existing event rather than ignore or duplicate it."""
+    try:
+        return int(formal["ics_seq"] or 0)
+    except (KeyError, IndexError):
+        return 0
+
+
 def _vevent(formal):
     """VEVENT lines for one formal (dict/Row with id, host_college, dt, price,
     location, instructions)."""
@@ -34,6 +43,7 @@ def _vevent(formal):
         "BEGIN:VEVENT",
         f"UID:formal-{formal['id']}@pembrokeformalswaps.com",
         f"DTSTAMP:{_utc(datetime.now(LONDON))}",
+        f"SEQUENCE:{_seq(formal)}",
         f"DTSTART:{_utc(start)}",
         f"DTEND:{_utc(end)}",
         f"SUMMARY:{_esc('Formal at ' + formal['host_college'])}",

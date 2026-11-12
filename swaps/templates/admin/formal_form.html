@@ -16,6 +16,10 @@
   <p class="muted" id="endow_hint"></p>
   <label>Date &amp; time (UK time)</label>
   <input type="datetime-local" name="dt" required value="{{ (f['dt'].replace(' ', 'T')) if f else '' }}">
+  {% if f and f['id'] %}
+  <label style="font-weight:normal"><input type="checkbox" name="notify_date_change" value="1" checked>
+    If the date/time changes, email all attendees with an updated calendar invite</label>
+  {% endif %}
   <label>Price info</label>
   <input type="text" name="price" placeholder="e.g. £16.50, pay host college" value="{{ f['price'] if f else '' }}">
   <label style="font-weight:normal"><input type="checkbox" name="wine_fee"
