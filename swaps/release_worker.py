@@ -39,11 +39,27 @@ def _notify(formal, emails):
              formal["id"], formal["host_college"], len(emails))
 
 
+def _coming_as(formal):
+    """email -> {name, dietary} for attendees who took over a seat after the
+    host's list went out (they're on it under the original person)."""
+    conn = connect()
+    try:
+        return {r["email"]: {"name": r["inherited_from"], "dietary": r["inherited_dietary"]}
+                for r in conn.execute(
+                    "SELECT u.email, a.inherited_from, a.inherited_dietary "
+                    "FROM allocations a JOIN users u ON u.id = a.user_id "
+                    "WHERE a.formal_id=? AND a.status='active' "
+                    "AND a.inherited_from IS NOT NULL", (formal["id"],))}
+    finally:
+        conn.close()
+
+
 def _send_reminders(formal, emails):
     ics = [(f"{formal['host_college']}-formal.ics",
             formal_ics(formal).encode())]
+    coming_as = _coming_as(formal)
     for email in emails:
-        emailer.reminder_email(email, formal, ics)
+        emailer.reminder_email(email, formal, ics, coming_as.get(email))
     log.info("Sent day-of reminder for formal %s to %d attendee(s)",
              formal["id"], len(emails))
 

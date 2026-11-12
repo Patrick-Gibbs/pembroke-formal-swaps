@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "admin/_release_controls.html" import release_controls with context %}
 {% block content %}
 <h1>Roster — {{ f['host_college'] }} ({{ f['dt'] | uk_datetime }})</h1>
 {% if f['host_name'] or f['host_email'] or f['host_phone'] %}
@@ -16,23 +17,9 @@
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <button class="btn">{% if f['catering_sent'] %}✓ List sent · resend to host{% else %}✉ Email host the list now{% endif %}</button>
   </form>
-{% if held_pri %}
-      <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/release"
-            data-confirm="Release {{ held_pri }} waiting place(s) at {{ f['host_college'] }} now to members with NO swaps? Their subscribers are emailed straight away." onsubmit="return confirm(this.dataset.confirm)">
-        <input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="to" value="noswaps">
-        <button class="small">Release to no-swaps ({{ held_pri }})</button>
-      </form>{% endif %}
-      {% if held %}
-      <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/release"
-            data-confirm="Release {{ held }} waiting place(s) at {{ f['host_college'] }} now to EVERYONE? Subscribers not already emailed about it are emailed straight away."
-            data-confirm-silent="Release {{ held }} waiting place(s) at {{ f['host_college'] }} now to EVERYONE, WITHOUT emailing anyone?"
-            onsubmit="return confirm(this.email.checked ? this.dataset.confirm : this.dataset.confirmSilent)">
-        <input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="to" value="all">
-        <label class="muted" style="font-weight:normal;display:inline"><input type="checkbox" name="email" value="1" checked> Email subscribers</label>
-        <button class="small">Release to all ({{ held }})</button>
-      </form>{% endif %}
+{{ release_controls(f, held_pri, held, release_mode, past, '', default_release_mode) }}
   <a class="btn ghost" href="/admin/">Back</a>
-  &nbsp; Free seats now: <b>{{ free }}</b> / {{ f['slots'] }}{% if f['wine_fee'] %} &nbsp; 🍷 Wine{% if f['wine_price'] %} ({{ f['wine_price'] }}){% endif %}: <b>{{ wine_yes }}</b> yes, <b>{{ wine_no }}</b> opted out{% endif %}{% if held %} <span class="muted">(+{{ held }} cancelled, {{ 'held for you to release or assign' if release_mode == 'manual' else 'awaiting public release' }} — you can still fill {{ 'it' if held == 1 else 'these' }} below)</span>{% endif %}
+  &nbsp; Free seats now: <b>{{ free }}</b> / {{ f['slots'] }}{% if f['wine_fee'] %} &nbsp; 🍷 Wine{% if f['wine_price'] %} ({{ f['wine_price'] }}){% endif %}: <b>{{ wine_yes }}</b> yes, <b>{{ wine_no }}</b> opted out{% endif %}{% if held %} <span class="muted">(+{{ held }} cancelled, {{ 'not released — the formal has happened' if past else 'held for you to release or assign' if release_mode == 'manual' else 'awaiting public release' }} — you can still fill {{ 'it' if held == 1 else 'these' }} below)</span>{% endif %}
 </p>
 
 <div id="copy-roster" style="display:none">
@@ -98,6 +85,6 @@
     <button>Add to this formal</button>
   </form>
   <p class="muted">To move someone between formals: add them to the new one, then remove them here.
-  Admin adds (until the formal starts) and removals bypass the claim/cancel cut-off; {% if release_mode == 'manual' %}the freed seat is held until you release or assign it (manual release mode).{% else %}the freed seat still releases automatically at a random time.{% endif %}</p>
+  Admin adds and removals bypass the claim/cancel cut-off and still work after the formal (e.g. for billing; no confirmation email is sent then); {% if past %}places freed now are not released.{% elif release_mode == 'manual' %}the freed seat is held until you release or assign it (manual release for this formal).{% else %}the freed seat still releases automatically at a random time.{% endif %}</p>
 </div>
 {% endblock %}

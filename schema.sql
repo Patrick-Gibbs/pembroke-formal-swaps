@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS formals (
     wine_fee INTEGER NOT NULL DEFAULT 0,        -- 1 = wine is an additional fee
     wine_price TEXT NOT NULL DEFAULT '',        -- e.g. '£6' (optional)
     ics_seq INTEGER NOT NULL DEFAULT 0,         -- calendar SEQUENCE; bumped on date change
+    release_mode TEXT NOT NULL DEFAULT '',      -- '' = global default, or 'auto'/'manual'
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

@@ -91,8 +91,20 @@ def daytime_clamp(dt_local):
 MANUAL_HOLD = "9999-12-31 00:00:00"
 
 
-def release_mode(conn):
+def release_mode(conn, formal_id=None):
+    """Effective release mode: a formal's own setting ('auto'/'manual') if it
+    has one, else the global default."""
+    if formal_id is not None:
+        r = conn.execute("SELECT release_mode FROM formals WHERE id=?",
+                         (formal_id,)).fetchone()
+        if r is not None and r["release_mode"] in ("auto", "manual"):
+            return r["release_mode"]
     return "manual" if get_setting(conn, "release_mode", "auto") == "manual" else "auto"
+
+
+def formal_started(conn, formal_id):
+    f = conn.execute("SELECT dt FROM formals WHERE id=?", (formal_id,)).fetchone()
+    return f is not None and hours_until_formal(f["dt"]) <= 0
 
 
 def _release_times(rng, start_local=None):
@@ -104,39 +116,61 @@ def _release_times(rng, start_local=None):
     return _local_to_utc_str(rel_local), _local_to_utc_str(gen_local)
 
 
-def set_release_mode(conn, mode, rng=None):
-    """Switch release mode. To manual: places not yet open to anyone are held,
-    and places only open to the no-swaps group stop short of opening to all.
-    To auto: held places get fresh random release times, as if cancelled now.
+def _apply_release_mode(conn, mode, rng, formal_ids):
+    """Hold back (manual) or reschedule (auto) the unclaimed places of these
+    formals. Returns the number of places affected."""
+    if not formal_ids:
+        return 0
+    now = utcnow_str()
+    marks = ",".join("?" * len(formal_ids))
+    n = 0
+    if mode == "manual":
+        n += conn.execute(
+            f"UPDATE released_slots SET release_at=?, general_at=? "  # noqa: S608
+            f"WHERE claimed_by IS NULL AND release_at > ? AND formal_id IN ({marks})",
+            (MANUAL_HOLD, MANUAL_HOLD, now, *formal_ids)).rowcount
+        n += conn.execute(
+            f"UPDATE released_slots SET general_at=? WHERE claimed_by IS NULL "  # noqa: S608
+            f"AND release_at <= ? AND COALESCE(general_at, release_at) > ? "
+            f"AND formal_id IN ({marks})", (MANUAL_HOLD, now, now, *formal_ids)).rowcount
+    else:
+        for r in conn.execute(
+                f"SELECT id, release_at FROM released_slots WHERE claimed_by IS NULL "  # noqa: S608
+                f"AND (release_at=? OR general_at=?) AND formal_id IN ({marks})",
+                (MANUAL_HOLD, MANUAL_HOLD, *formal_ids)).fetchall():
+            rel, gen = _release_times(rng)
+            if r["release_at"] != MANUAL_HOLD:     # already open to no-swaps
+                rel = r["release_at"]
+            conn.execute("UPDATE released_slots SET release_at=?, general_at=? "
+                         "WHERE id=?", (rel, gen, r["id"]))
+            n += 1
+    return n
+
+
+def set_release_mode(conn, mode, rng=None, formal_id=None):
+    """Switch release mode — globally (formal_id=None: the default, applied to
+    formals without their own setting) or for one formal (mode '' = follow the
+    default again). To manual: places not yet open to anyone are held, and
+    places only open to the no-swaps group stop short of opening to all. To
+    auto: held places get fresh random release times, as if cancelled now.
     Returns the number of places affected."""
     rng = rng or secrets.SystemRandom()
-    mode = "manual" if mode == "manual" else "auto"
-    now = utcnow_str()
-    n = 0
     with immediate(conn):
-        from .db import set_setting
-        set_setting(conn, "release_mode", mode)
-        if mode == "manual":
-            n += conn.execute(
-                "UPDATE released_slots SET release_at=?, general_at=? "
-                "WHERE claimed_by IS NULL AND release_at > ?",
-                (MANUAL_HOLD, MANUAL_HOLD, now)).rowcount
-            n += conn.execute(
-                "UPDATE released_slots SET general_at=? WHERE claimed_by IS NULL "
-                "AND release_at <= ? AND COALESCE(general_at, release_at) > ?",
-                (MANUAL_HOLD, now, now)).rowcount
+        if formal_id is None:
+            mode = "manual" if mode == "manual" else "auto"
+            from .db import set_setting
+            set_setting(conn, "release_mode", mode)
+            ids = [r["id"] for r in conn.execute(
+                "SELECT id FROM formals WHERE release_mode NOT IN ('auto','manual')")]
         else:
-            for r in conn.execute(
-                    "SELECT id, release_at FROM released_slots WHERE claimed_by IS NULL "
-                    "AND (release_at=? OR general_at=?)",
-                    (MANUAL_HOLD, MANUAL_HOLD)).fetchall():
-                rel, gen = _release_times(rng)
-                if r["release_at"] != MANUAL_HOLD:     # already open to no-swaps
-                    rel = r["release_at"]
-                conn.execute("UPDATE released_slots SET release_at=?, general_at=? "
-                             "WHERE id=?", (rel, gen, r["id"]))
-                n += 1
-        audit(conn, "admin", "release_mode", f"mode={mode} places={n}")
+            mode = mode if mode in ("auto", "manual") else ""
+            conn.execute("UPDATE formals SET release_mode=? WHERE id=?", (mode, formal_id))
+            ids = [formal_id]
+        effective = release_mode(conn, formal_id)
+        n = _apply_release_mode(conn, effective, rng, ids)
+        audit(conn, "admin", "release_mode",
+              f"mode={mode or 'default'}"
+              + (f" formal={formal_id}" if formal_id is not None else "") + f" places={n}")
     return n
 
 
@@ -152,33 +186,35 @@ def pending_holds(conn, formal_id, priority=False):
         (formal_id, now)).fetchone()["n"]
 
 
-def release_now(conn, formal_id, everyone, email=True):
+def release_now(conn, formal_id, everyone, email=True, limit=None):
     """Admin override: open a formal's waiting (cancelled, not yet released)
     places immediately — to members who missed out (everyone=False) or to all
     members (everyone=True). The release worker emails the matching subscribers
     on its next pass, unless email=False (release-to-all only): the places are
-    then marked as already announced, so nobody is emailed about them. Returns
-    the number of places affected."""
+    then marked as already announced, so nobody is emailed about them.
+    limit: release at most this many places (soonest-due first); None = all.
+    Nothing is released once the formal has started. Returns the number of
+    places affected."""
     now = utcnow_str()
+    if formal_started(conn, formal_id):
+        return 0
+    waiting = "COALESCE(general_at, release_at)" if everyone else "release_at"
     with immediate(conn):
-        if everyone:
-            ids = [r["id"] for r in conn.execute(
-                "SELECT id FROM released_slots WHERE formal_id=? AND claimed_by IS NULL "
-                "AND COALESCE(general_at, release_at) > ?", (formal_id, now))]
-            if not email:
-                conn.executemany("UPDATE released_slots SET notified=1, "
-                                 "general_notified=1, opened=1 WHERE id=?",
-                                 [(i,) for i in ids])
-            n = conn.execute(
-                "UPDATE released_slots SET release_at=MIN(release_at, ?), general_at=? "
-                "WHERE formal_id=? AND claimed_by IS NULL "
-                "AND COALESCE(general_at, release_at) > ?",
-                (now, now, formal_id, now)).rowcount
-        else:
-            n = conn.execute(
-                "UPDATE released_slots SET release_at=? WHERE formal_id=? "
-                "AND claimed_by IS NULL AND release_at > ?",
-                (now, formal_id, now)).rowcount
+        ids = [r["id"] for r in conn.execute(
+            f"SELECT id FROM released_slots WHERE formal_id=? AND claimed_by IS NULL "  # noqa: S608
+            f"AND {waiting} > ? ORDER BY release_at, id"
+            + (" LIMIT ?" if limit else ""),
+            (formal_id, now) + ((int(limit),) if limit else ()))]
+        for i in ids:
+            if everyone:
+                if not email:
+                    conn.execute("UPDATE released_slots SET notified=1, "
+                                 "general_notified=1, opened=1 WHERE id=?", (i,))
+                conn.execute("UPDATE released_slots SET release_at=MIN(release_at, ?), "
+                             "general_at=? WHERE id=?", (now, now, i))
+            else:
+                conn.execute("UPDATE released_slots SET release_at=? WHERE id=?", (now, i))
+        n = len(ids)
         audit(conn, "admin", "release_now",
               f"formal={formal_id} to={'everyone' if everyone else 'no-swaps'} places={n}"
               + ("" if email or not everyone else " no-email"))
@@ -1092,7 +1128,7 @@ def cancel_allocation(conn, user_id, allocation_id, rng=None, actor=None):
         # the two stages guarantees the missed-out group a genuine head start
         # and stops a leaver from timing the reopen for a friend.
         # In manual release mode the place is held until the admin acts.
-        if release_mode(conn) == "manual":
+        if release_mode(conn, alloc["formal_id"]) == "manual":
             release_at = general_at = MANUAL_HOLD
         else:
             release_at, general_at = _release_times(rng)
@@ -1112,11 +1148,16 @@ def cancel_allocation(conn, user_id, allocation_id, rng=None, actor=None):
                                     alloc["dietary_other"])
         conn.execute("UPDATE allocations SET status='cancelled', cancelled_at=? WHERE id=?",
                      (utcnow_str(), allocation_id))
-        conn.execute(
-            "INSERT INTO released_slots(formal_id, allocation_id, release_at, general_at, "
-            "orig_name, orig_dietary, orig_alloc) VALUES (?,?,?,?,?,?,?)",
-            (alloc["formal_id"], allocation_id, release_at, general_at,
-             orig_name, orig_diet, orig_alloc))
+        # Once the formal has happened (admin guest-list fixes for billing)
+        # there's nothing to release: the seat is simply free again.
+        if hrs > 0:
+            conn.execute(
+                "INSERT INTO released_slots(formal_id, allocation_id, release_at, "
+                "general_at, orig_name, orig_dietary, orig_alloc) VALUES (?,?,?,?,?,?,?)",
+                (alloc["formal_id"], allocation_id, release_at, general_at,
+                 orig_name, orig_diet, orig_alloc))
+        else:
+            release_at = None
         audit(conn, actor or f"user:{alloc['user_id']}", "cancel",
               f"allocation={allocation_id} formal={alloc['formal_id']} "
               f"release_at={release_at}Z general_at={general_at}Z"
@@ -1138,8 +1179,8 @@ def claim_seat(conn, user_id, formal_id, actor=None, override_holds=False,
     and this claim takes a released seat, a dict {replaced, dietary} — the seat's
     frozen dietary the claimer inherits (the host can't re-cater).
 
-    override_holds (admin only): ignores the claim cut-off (until the formal
-    starts) and may also take a cancelled place that hasn't
+    override_holds (admin only): ignores the claim cut-off (even after the
+    formal, for billing fixes) and may also take a cancelled place that hasn't
     been publicly released yet (or is in its head-start window). It's marked
     claimed, so it's never released and nobody is notified about it.
 
@@ -1151,10 +1192,9 @@ def claim_seat(conn, user_id, formal_id, actor=None, override_holds=False,
         if f is None:
             raise ClaimError("This formal is not available.")
         cutoff = cancel_cutoff_hours(conn)
-        if override_holds:          # admin: allowed right up to the start
-            if hours_until_formal(f["dt"]) <= 0:
-                raise ClaimError("This formal has already started.")
-        elif hours_until_formal(f["dt"]) < cutoff:
+        # Admin (override_holds) may edit the guest list at any time, even after
+        # the formal, e.g. to get billing right.
+        if not override_holds and hours_until_formal(f["dt"]) < cutoff:
             raise ClaimError(f"Claims close {int(cutoff)} hours before the formal.")
         already = conn.execute(
             "SELECT 1 FROM allocations WHERE user_id=? AND formal_id=? AND status='active'",
@@ -1377,8 +1417,11 @@ def open_due_releases(conn, notify):
                 f"SELECT id, formal_id FROM released_slots "  # noqa: S608 - fixed names
                 f"WHERE {due} <= ? AND {flag} = 0 AND claimed_by IS NULL",
                 (now,)).fetchall():
-            term = conn.execute("SELECT term FROM formals WHERE id=?",
-                                (r["formal_id"],)).fetchone()["term"]
+            fr = conn.execute("SELECT term, dt FROM formals WHERE id=?",
+                              (r["formal_id"],)).fetchone()
+            if hours_until_formal(fr["dt"]) <= 0:
+                continue       # the formal has happened: never announce places
+            term = fr["term"]
             with immediate(conn):
                 fresh = conn.execute(f"SELECT {flag} FROM released_slots "  # noqa: S608
                                      f"WHERE id=?", (r["id"],)).fetchone()

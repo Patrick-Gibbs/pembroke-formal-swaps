@@ -1,0 +1,36 @@
+{# Release buttons + per-formal release mode, shared by the dashboard and roster. #}
+{% macro release_controls(f, held_pri, held_all, mode, past, back='', default_mode='auto') %}
+{% if past %}
+  {% if held_all %}<span class="muted" style="font-size:.85rem">Formal has happened — places can't be released</span>{% endif %}
+{% else %}
+  {% if held_pri %}
+  <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/release"
+        data-n="{{ held_pri }}"
+        data-confirm="Release {n} waiting place(s) at {{ f['host_college'] }} now to members with NO swaps? Their subscribers are emailed straight away."
+        onsubmit="return confirm(this.dataset.confirm.replace('{n}', event.submitter && event.submitter.value === '1' ? '1' : this.dataset.n))">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="to" value="noswaps">{% if back %}<input type="hidden" name="back" value="{{ back }}">{% endif %}
+    {% if held_pri > 1 %}<button class="small" name="count" value="1">Release 1 to no-swaps</button>{% endif %}
+    <button class="small" name="count" value="all">Release {{ 'all ' if held_pri > 1 }}to no-swaps ({{ held_pri }})</button>
+  </form>{% endif %}
+  {% if held_all %}
+  <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/release"
+        data-n="{{ held_all }}"
+        data-confirm="Release {n} waiting place(s) at {{ f['host_college'] }} now to EVERYONE? Subscribers not already emailed about it are emailed straight away."
+        data-confirm-silent="Release {n} waiting place(s) at {{ f['host_college'] }} now to EVERYONE, WITHOUT emailing anyone?"
+        onsubmit="return confirm((this.email.checked ? this.dataset.confirm : this.dataset.confirmSilent).replace('{n}', event.submitter && event.submitter.value === '1' ? '1' : this.dataset.n))">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="to" value="all">{% if back %}<input type="hidden" name="back" value="{{ back }}">{% endif %}
+    <label class="muted" style="font-weight:normal;display:inline"><input type="checkbox" name="email" value="1" checked> Email subscribers</label>
+    {% if held_all > 1 %}<button class="small" name="count" value="1">Release 1 to all</button>{% endif %}
+    <button class="small" name="count" value="all">Release {{ 'all ' if held_all > 1 }}to all ({{ held_all }})</button>
+  </form>{% endif %}
+{% endif %}
+  <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/release-mode">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">{% if back %}<input type="hidden" name="back" value="{{ back }}">{% endif %}
+    <select name="mode" onchange="this.form.submit()" title="Release mode for cancelled places at this formal" style="font-size:.8rem">
+      <option value="" {% if f['release_mode'] not in ('auto', 'manual') %}selected{% endif %}>Release: default ({{ default_mode }})</option>
+      <option value="auto" {% if f['release_mode'] == 'auto' %}selected{% endif %}>Release: auto</option>
+      <option value="manual" {% if f['release_mode'] == 'manual' %}selected{% endif %}>Release: manual</option>
+    </select>
+    <noscript><button class="small">Set</button></noscript>
+  </form>
+{% endmacro %}

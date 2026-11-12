@@ -88,5 +88,7 @@ def test_admin_can_add_inside_cutoff_but_members_cannot(db):
     with pytest.raises(ClaimError, match="Claims close"):
         claim_seat(db, 1, 1)
     claim_seat(db, 1, 1, actor="admin", override_holds=True)
-    with pytest.raises(ClaimError, match="already started"):
-        claim_seat(db, 2, 2, actor="admin", override_holds=True)
+    # After the formal: admin can still fix the guest list (billing).
+    claim_seat(db, 2, 2, actor="admin", override_holds=True)
+    with pytest.raises(ClaimError):
+        claim_seat(db, 1, 2)

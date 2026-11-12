@@ -42,6 +42,7 @@ def init_db(db_path=None):
                      ("wine_fee", "INTEGER NOT NULL DEFAULT 0"),
                      ("wine_price", "TEXT NOT NULL DEFAULT ''"),
                      ("ics_seq", "INTEGER NOT NULL DEFAULT 0"),
+                     ("release_mode", "TEXT NOT NULL DEFAULT ''"),
                      ("host_name", "TEXT NOT NULL DEFAULT ''"),
                      ("host_email", "TEXT NOT NULL DEFAULT ''"),
                      ("host_phone", "TEXT NOT NULL DEFAULT ''"),

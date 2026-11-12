@@ -299,11 +299,20 @@ def no_place_email(to, term):
     return send(to, subject, body)
 
 
-def reminder_email(to, formal, ics_files):
+def reminder_email(to, formal, ics_files, coming_as=None):
+    """coming_as: {name, dietary} when the attendee took over a seat after the
+    host's list went out — the host has them down under that person."""
     subject, body = _render_template("reminder", {
         "host_college": formal["host_college"], "dt": uk_datetime(formal["dt"]),
         "time": formal["dt"][11:16], "formal_block": _formal_block(formal),
         "review_link": f"{config.SITE_URL}/review/{formal['id']}"})
+    if coming_as:
+        # Outside the editable template so an override can't drop it.
+        body += (f"<p>⚠️ You took this place after the host college received the "
+                 f"guest list, so you're on their list as <b>{coming_as['name']}</b>"
+                 + (f", with their meal: <b>{coming_as['dietary']}</b>"
+                    if coming_as.get("dietary") and coming_as["dietary"] != "—" else "")
+                 + f". Give that name if asked at the door.</p>")
     return send(to, subject, body, attachments=ics_files)
 
 

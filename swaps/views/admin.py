@@ -49,6 +49,7 @@ def logout():
 @bp.route("/")
 @admin_required
 def dashboard():
+    from ..services import formal_started
     db = get_db()
     formals = db.execute("SELECT * FROM formals ORDER BY term, dt").fetchall()
     stats = {}
@@ -63,7 +64,9 @@ def dashboard():
                           "free": free_seats(db, f["id"], f["slots"]),
                           # waiting places not yet open to anyone / to everyone
                           "held_pri": pending_holds(db, f["id"], priority=True),
-                          "held_all": pending_holds(db, f["id"])}
+                          "held_all": pending_holds(db, f["id"]),
+                          "mode": release_mode(db, f["id"]),
+                          "past": formal_started(db, f["id"])}
     users_n = db.execute("SELECT COUNT(*) n FROM users WHERE email_verified=1"
                          ).fetchone()["n"]
     term_now = get_setting(db, "current_term")
@@ -809,6 +812,7 @@ def runs():
 @bp.route("/formals/<int:fid>/roster")
 @admin_required
 def roster(fid):
+    from ..services import formal_started
     db = get_db()
     f = db.execute("SELECT * FROM formals WHERE id=?", (fid,)).fetchone()
     if f is None:
@@ -849,7 +853,9 @@ def roster(fid):
                            free=free_seats(db, fid, f["slots"]),
                            held=pending_holds(db, fid),
                            held_pri=pending_holds(db, fid, priority=True),
-                           release_mode=release_mode(db))
+                           release_mode=release_mode(db, fid),
+                           default_release_mode=release_mode(db),
+                           past=formal_started(db, fid))
 
 
 def _confirm_admin_assign(db, uid, fid, inherited):
@@ -861,6 +867,11 @@ def _confirm_admin_assign(db, uid, fid, inherited):
     from ..ics import formal_ics
     f = db.execute("SELECT * FROM formals WHERE id=?", (fid,)).fetchone()
     u = db.execute("SELECT email FROM users WHERE id=?", (uid,)).fetchone()
+    from ..services import formal_started
+    if formal_started(db, fid):
+        db.execute("UPDATE allocations SET notified=1 WHERE user_id=? AND formal_id=? "
+                   "AND status='active'", (uid, fid))
+        return "The formal has already happened, so no confirmation email was sent."
     if (f["term"] == get_setting(db, "current_term")
             and get_setting(db, "results_published", "1") != "1"):
         return "Results are still a draft, so they'll get their email when you publish."
@@ -916,17 +927,40 @@ def set_release_mode_view():
     return redirect(url_for("admin.dashboard"))
 
 
+@bp.route("/formals/<int:fid>/release-mode", methods=["POST"])
+@admin_required
+def set_formal_release_mode(fid):
+    """Per-formal release mode: '' (follow the default), 'auto' or 'manual'."""
+    from ..services import set_release_mode
+    db = get_db()
+    mode = request.form.get("mode", "")
+    n = set_release_mode(db, mode, formal_id=fid)
+    eff = release_mode(db, fid)
+    flash(("Release mode set to the default" if mode not in ("auto", "manual")
+           else f"Release mode set to {mode}")
+          + f" — cancelled places here are {'held until you release or assign them' if eff == 'manual' else 'released automatically'}."
+          + (f" {n} place(s) {'held back' if eff == 'manual' else 'rescheduled'}." if n else ""),
+          "ok")
+    back = request.form.get("back") == "dashboard"
+    return redirect(url_for("admin.dashboard") if back else url_for("admin.roster", fid=fid))
+
+
 @bp.route("/formals/<int:fid>/release", methods=["POST"])
 @admin_required
 def release_formal(fid):
     """Open a formal's waiting places now: to=all or to=noswaps."""
     from ..services import release_now
     db = get_db()
+    from ..services import formal_started
     everyone = request.form.get("to") == "all"
     # Release-to-all has an "Email subscribers" tick box; no-swaps always emails.
     email = not everyone or request.form.get("email") == "1"
-    n = release_now(db, fid, everyone, email=email)
-    if n:
+    limit = 1 if request.form.get("count") == "1" else None
+    n = release_now(db, fid, everyone, email=email, limit=limit)
+    if not n and formal_started(db, fid):
+        flash("This formal has already happened, so places can't be released. "
+              "You can still add or remove people for billing.", "error")
+    elif n:
         flash(f"Released {n} place(s) to {'everyone' if everyone else 'members with no swaps'}"
               + (" — matching subscribers are emailed within a minute." if email
                  else " — nobody was emailed."), "ok")
@@ -941,11 +975,16 @@ def release_formal(fid):
 def cancel_alloc(alloc_id):
     db = get_db()
     try:
+        from ..services import formal_started
+        a = db.execute("SELECT formal_id FROM allocations WHERE id=?", (alloc_id,)).fetchone()
         # user_id=None: admin override — bypasses ownership and the 24h rule
         cancel_allocation(db, None, alloc_id, actor="admin")
+        fid = a["formal_id"]
         flash("Allocation cancelled; " + (
+            "the formal has already happened, so the place isn't released."
+            if formal_started(db, fid) else
             "the place is held for you to release or assign (manual release)."
-            if release_mode(db) == "manual" else
+            if release_mode(db, fid) == "manual" else
             "the place will be released automatically at a random time."), "ok")
     except CancelError as e:
         flash(str(e), "error")

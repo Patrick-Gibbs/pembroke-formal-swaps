@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "admin/_release_controls.html" import release_controls with context %}
 {% block title %}Admin — Pembroke Formal Swaps{% endblock %}
 {% block content %}
 <h1>Admin</h1>
@@ -55,7 +56,8 @@
 
 <div class="card">
   <h3>Cancelled places</h3>
-  <p>Release mode: <b>{{ 'Manual' if release_mode == 'manual' else 'Auto' }}</b> —
+  <p>Default release mode: <b>{{ 'Manual' if release_mode == 'manual' else 'Auto' }}</b>
+  <span class="muted">(each formal can override this with its Release menu)</span> —
   {% if release_mode == 'manual' %}cancelled places are held until you release them
   (Release to no-swaps / Release to all on each formal) or assign them (add a member
   from the formal's roster). Nobody is emailed until you release.
@@ -151,21 +153,7 @@
     <td>
       <a class="btn" style="font-size:.8rem;padding:.15rem .5rem" href="/admin/formals/{{ f['id'] }}/roster">Roster</a>
       <a class="btn ghost" style="font-size:.8rem;padding:.15rem .5rem" href="/admin/formals/{{ f['id'] }}/edit">Edit</a>
-      {% if stats[f['id']]['held_pri'] %}
-      <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/release"
-            data-confirm="Release {{ stats[f['id']]['held_pri'] }} waiting place(s) at {{ f['host_college'] }} now to members with NO swaps? Their subscribers are emailed straight away." onsubmit="return confirm(this.dataset.confirm)">
-        <input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="to" value="noswaps"><input type="hidden" name="back" value="dashboard">
-        <button class="small">Release to no-swaps ({{ stats[f['id']]['held_pri'] }})</button>
-      </form>{% endif %}
-      {% if stats[f['id']]['held_all'] %}
-      <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/release"
-            data-confirm="Release {{ stats[f['id']]['held_all'] }} waiting place(s) at {{ f['host_college'] }} now to EVERYONE? Subscribers not already emailed about it are emailed straight away."
-            data-confirm-silent="Release {{ stats[f['id']]['held_all'] }} waiting place(s) at {{ f['host_college'] }} now to EVERYONE, WITHOUT emailing anyone?"
-            onsubmit="return confirm(this.email.checked ? this.dataset.confirm : this.dataset.confirmSilent)">
-        <input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="to" value="all"><input type="hidden" name="back" value="dashboard">
-        <label class="muted" style="font-weight:normal;display:inline"><input type="checkbox" name="email" value="1" checked> Email subscribers</label>
-        <button class="small">Release to all ({{ stats[f['id']]['held_all'] }})</button>
-      </form>{% endif %}
+      {{ release_controls(f, stats[f['id']]['held_pri'], stats[f['id']]['held_all'], stats[f['id']]['mode'], stats[f['id']]['past'], 'dashboard', release_mode) }}
       {% if f['status'] == 'allocated' %}
       <form class="inline" method="post" action="/admin/formals/{{ f['id'] }}/catering-email"
             data-confirm="{% if f['catering_sent'] %}Re-send the attendance list + dietary to {{ f['host_college'] }}?{% else %}Email {{ f['host_college'] }} the attendance list + dietary now? This locks the list: anyone who claims a freed place afterwards takes the dropped person's meal, and peer swaps for this formal close.{% endif %}" onsubmit="return confirm(this.dataset.confirm)">
