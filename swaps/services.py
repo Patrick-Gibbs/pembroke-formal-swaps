@@ -1316,7 +1316,7 @@ def send_scheduled_emails(conn, send_reminder, send_review, send_catering=None,
     transaction so each email goes at most once."""
     now = now or local_now()
     fired = []
-    published = get_setting(conn, "results_published", "1") == "1"
+    from .terms import is_published
     admin_email = get_setting(conn, "admin_email", "").strip()
     admin_name = get_setting(conn, "admin_name", "").strip()
     rows = conn.execute(
@@ -1338,7 +1338,7 @@ def send_scheduled_emails(conn, send_reminder, send_review, send_catering=None,
         if send_catering and not f["catering_sent"] and send_at <= now < start:
             to, cc = catering_recipients(f["host_email"], admin_email)
             attendees = catering_list(conn, f["id"])
-            if published and attendees and to:
+            if is_published(conn, f["term"]) and attendees and to:
                 with immediate(conn):
                     fresh = conn.execute("SELECT catering_sent FROM formals WHERE id=?",
                                          (f["id"],)).fetchone()

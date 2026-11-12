@@ -4,10 +4,56 @@
 {% block content %}
 <h1>Admin</h1>
 
+<div class="card" style="display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-end">
+  <form method="post" action="/admin/term/select" class="inline">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <label style="margin:0">Working on term</label>
+    <select name="term" onchange="this.form.submit()" style="font-size:1rem">
+      {% for t in terms %}
+      <option value="{{ t }}" {% if t == term %}selected{% endif %}>{{ t }}{% if t == current_term_name %} (current){% endif %}</option>
+      {% endfor %}
+    </select>
+    <noscript><button class="small">Go</button></noscript>
+  </form>
+  <span>
+    {% if term == current_term_name %}<b>Current term</b> — members see this one.
+    {% else %}<b>Not the current term</b> — members see “{{ current_term_name }}”.
+    <form class="inline" method="post" action="/admin/term/make-current"
+          data-confirm="Make “{{ term }}” the current term? Members will see its formals and ballot." onsubmit="return confirm(this.dataset.confirm)">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="term" value="{{ term }}">
+      <button class="small">Make current</button>
+    </form>{% endif %}
+    &middot; Results: <b>{{ 'published' if results_published else 'draft' }}</b>
+  </span>
+  <details style="margin-left:auto">
+    <summary class="btn ghost" style="display:inline-block">+ New term</summary>
+    <form method="post" action="/admin/term/new" style="margin-top:.5rem">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <input type="text" name="name" required maxlength="60" placeholder="e.g. Lent 2027" style="max-width:12rem">
+      <label style="font-weight:normal"><input type="checkbox" name="make_current"> Make it the current term now</label>
+      <button class="small">Create</button>
+    </form>
+  </details>
+</div>
+
+<div class="card">
+  <h3>{{ term or '(no term)' }} — ballot window</h3>
+  <form method="post" action="/admin/term/settings">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <label>Ballot opens (UK time — applies to every formal this term unless a formal sets its own)</label>
+    <input type="datetime-local" name="term_ballot_open" value="{{ term_ballot_open.replace(' ', 'T') }}">
+    <label>Ballot closes (UK time — shown publicly)</label>
+    <input type="datetime-local" name="term_ballot_close" value="{{ term_ballot_close.replace(' ', 'T') }}">
+    <p><button class="small">Save ballot window</button>
+    <span class="muted">Generate allocation, preview, publish, reminders, simulate and
+    exports below all act on {{ term or 'this term' }}.</span></p>
+  </form>
+</div>
+
 {% if unnotified > 0 or not results_published %}
 <div class="flash ok" style="display:flex;align-items:center;gap:1rem">
   <span>
-    {% if not results_published %}Results are in <b>DRAFT</b> — not public, no emails sent.{% endif %}
+    {% if not results_published %}{{ term }} results are in <b>DRAFT</b> — not public, no emails sent.{% endif %}
     {% if unnotified > 0 %}<b>{{ unnotified }}</b> allocation(s) awaiting publication.{% endif %}
     <a href="/admin/preview"><b>Preview all rosters</b></a>, then publish.
   </span>
@@ -76,12 +122,6 @@
   <h3>Settings</h3>
   <form method="post" action="/admin/settings" enctype="multipart/form-data">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-    <label>Current term (shown to users; ballot &amp; allocation operate on this)</label>
-    <input type="text" name="current_term" value="{{ term }}" placeholder="e.g. Michaelmas 2026">
-    <label>Ballot opens (UK time — applies to every formal unless a formal sets its own)</label>
-    <input type="datetime-local" name="term_ballot_open" value="{{ term_ballot_open.replace(' ', 'T') }}">
-    <label>Ballot closes (UK time — shown publicly)</label>
-    <input type="datetime-local" name="term_ballot_close" value="{{ term_ballot_close.replace(' ', 'T') }}">
     <label>Cancellation cut-off (hours before the formal; also closes claims)</label>
     <input type="number" name="cancel_cutoff_hours" min="0" max="336" step="1"
            value="{{ cancel_cutoff }}" style="max-width:7rem">
@@ -142,12 +182,11 @@
   {% endfor %}
 </div>
 
-<h2>Formals</h2>
+<h2>Formals — {{ term or '(no term)' }}</h2>
 <table>
-  <tr><th>Term</th><th>College</th><th>Date</th><th>Slots</th><th>Taken</th><th>Free</th><th>Ranked by</th><th>Subs</th><th>Status</th><th></th></tr>
+  <tr><th>College</th><th>Date</th><th>Slots</th><th>Taken</th><th>Free</th><th>Ranked by</th><th>Subs</th><th>Status</th><th></th></tr>
   {% for f in formals %}
   <tr>
-    <td>{{ f['term'] }}</td>
     <td>{{ f['host_college'] }}</td>
     <td>{{ f['dt'] | uk_datetime }}</td>
     <td>{{ f['slots'] }}</td>
@@ -179,6 +218,8 @@
       </form>
     </td>
   </tr>
+  {% else %}
+  <tr><td colspan="9" class="muted">No formals in {{ term }} yet — <a href="/admin/formals/new">add one</a> or <a href="/admin/formals/import">import a CSV</a>.</td></tr>
   {% endfor %}
 </table>
 {% endblock %}

@@ -117,6 +117,7 @@ def test_catering_fires_a_week_before_once(db):
 
 def test_catering_waits_for_publish(db):
     _catering_setup(db)
+    set_setting(db, "current_term", "T1")      # the formal's term
     set_setting(db, "results_published", "0")
     assert _run_catering(db, datetime(2030, 5, 4, 12)) == []            # unpublished: held
     set_setting(db, "results_published", "1")

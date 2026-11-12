@@ -8,6 +8,7 @@ from flask import (Blueprint, Response, flash, redirect, render_template,
 from .. import config
 from ..dates import from_uk, uk_datetime
 from ..db import audit, get_db, get_setting, immediate, set_setting
+from ..terms import is_published, term_setting
 from ..security import (admin_required, client_ip, ip_blocked,
                         lockout_remaining, record_attempt, verify_secret)
 from ..services import (CancelError, ClaimError, auto_subscribe_unmet,
@@ -16,6 +17,14 @@ from ..services import (CancelError, ClaimError, auto_subscribe_unmet,
                         seat_admin, unseat_admin)
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
+
+
+def admin_term(db):
+    """The term the admin is working on (dashboard dropdown, kept in the
+    session); defaults to the current term members see."""
+    from ..terms import all_terms
+    t = session.get("admin_term")
+    return t if t and t in all_terms(db) else get_setting(db, "current_term")
 
 
 @bp.route("/login", methods=["GET", "POST"])
@@ -51,7 +60,10 @@ def logout():
 def dashboard():
     from ..services import formal_started
     db = get_db()
-    formals = db.execute("SELECT * FROM formals ORDER BY term, dt").fetchall()
+    from ..terms import all_terms, term_setting
+    term_now = admin_term(db)
+    formals = db.execute("SELECT * FROM formals WHERE term=? ORDER BY dt",
+                         (term_now,)).fetchall()
     stats = {}
     for f in formals:
         active = db.execute("SELECT COUNT(*) n FROM allocations WHERE formal_id=? "
@@ -69,7 +81,6 @@ def dashboard():
                           "past": formal_started(db, f["id"])}
     users_n = db.execute("SELECT COUNT(*) n FROM users WHERE email_verified=1"
                          ).fetchone()["n"]
-    term_now = get_setting(db, "current_term")
     rosters = {}
     for f in formals:
         if f["term"] == term_now:
@@ -84,11 +95,12 @@ def dashboard():
         (term_now,)).fetchone()["n"]
     return render_template("admin/dashboard.html", formals=formals, stats=stats,
                            users_n=users_n, unnotified=unnotified, rosters=rosters,
-                           results_published=get_setting(db, "results_published",
-                                                         "1") == "1",
-                           term=get_setting(db, "current_term"),
-                           term_ballot_open=get_setting(db, "term_ballot_open"),
-                           term_ballot_close=get_setting(db, "term_ballot_close"),
+                           results_published=term_setting(db, "results_published",
+                                                          term_now, "1") == "1",
+                           term=term_now, terms=all_terms(db),
+                           current_term_name=get_setting(db, "current_term"),
+                           term_ballot_open=term_setting(db, "term_ballot_open", term_now),
+                           term_ballot_close=term_setting(db, "term_ballot_close", term_now),
                            cancel_cutoff=get_setting(db, "cancel_cutoff_hours", "12"),
                            cancel_charge=get_setting(db, "cancel_charge_hours", "72"),
                            admin_email=get_setting(db, "admin_email", ""),
@@ -144,20 +156,74 @@ def _handle_officer_photo(db):
             pass
 
 
+@bp.route("/term/select", methods=["POST"])
+@admin_required
+def term_select():
+    """Switch the admin's working term (what the dashboard and every
+    ballot/email action operate on). Doesn't change what members see."""
+    session["admin_term"] = request.form.get("term", "")
+    return redirect(request.form.get("back") if (request.form.get("back") or "")
+                    .startswith("/admin") else url_for("admin.dashboard"))
+
+
+@bp.route("/term/new", methods=["POST"])
+@admin_required
+def term_new():
+    from ..terms import create_term, make_current
+    db = get_db()
+    try:
+        name = create_term(db, request.form.get("name", ""))
+    except ValueError as e:
+        flash(str(e), "error")
+        return redirect(url_for("admin.dashboard"))
+    session["admin_term"] = name
+    if request.form.get("make_current"):
+        make_current(db, name)
+        flash(f"Created “{name}” and made it the current term members see. "
+              "Add its formals, then set its ballot window.", "ok")
+    else:
+        flash(f"Created “{name}”. You're now working on it — add its formals and "
+              "set its ballot window; members keep seeing "
+              f"“{get_setting(db, 'current_term')}” until you make it current.", "ok")
+    return redirect(url_for("admin.dashboard"))
+
+
+@bp.route("/term/make-current", methods=["POST"])
+@admin_required
+def term_make_current():
+    from ..terms import all_terms, make_current
+    db = get_db()
+    term = request.form.get("term", "")
+    if term not in all_terms(db):
+        flash("Unknown term.", "error")
+    else:
+        make_current(db, term)
+        flash(f"“{term}” is now the current term members see.", "ok")
+    return redirect(url_for("admin.dashboard"))
+
+
+@bp.route("/term/settings", methods=["POST"])
+@admin_required
+def term_settings():
+    """Ballot window for the working term."""
+    from ..terms import set_term_setting
+    db = get_db()
+    term = admin_term(db)
+    t_open = request.form.get("term_ballot_open", "").replace("T", " ").strip()
+    t_close = request.form.get("term_ballot_close", "").replace("T", " ").strip()
+    set_term_setting(db, "term_ballot_open", term, t_open)
+    set_term_setting(db, "term_ballot_close", term, t_close)
+    audit(db, "admin", "term_settings", f"term={term} window={t_open}..{t_close}")
+    flash(f"Ballot window saved for {term}.", "ok")
+    return redirect(url_for("admin.dashboard"))
+
+
 @bp.route("/settings", methods=["POST"])
 @admin_required
 def settings():
     db = get_db()
-    term = request.form.get("current_term", "").strip()
-    if term != get_setting(db, "current_term"):
-        set_setting(db, "results_published", "0")  # new term starts unpublished
-    set_setting(db, "current_term", term)
     set_setting(db, "attendee_list_public",
                 "1" if request.form.get("attendee_list_public") else "0")
-    t_open = request.form.get("term_ballot_open", "").replace("T", " ").strip()
-    t_close = request.form.get("term_ballot_close", "").replace("T", " ").strip()
-    set_setting(db, "term_ballot_open", t_open)
-    set_setting(db, "term_ballot_close", t_close)
     try:
         cutoff = max(0, int(request.form.get("cancel_cutoff_hours", "12")))
     except ValueError:
@@ -182,8 +248,7 @@ def settings():
     _handle_officer_photo(db)
     auto = "1" if request.form.get("admin_auto_attend") else "0"
     set_setting(db, "admin_auto_attend", auto)
-    audit(db, "admin", "settings", f"term={term} window={t_open}..{t_close} "
-          f"public={request.form.get('attendee_list_public', '0')}")
+    audit(db, "admin", "settings", f"public={request.form.get('attendee_list_public', '0')}")
     flash("Settings saved.", "ok")
     # Reflect auto-attend immediately so ranking shows N−1 (or restore N).
     cur_term = get_setting(db, "current_term")
@@ -206,7 +271,7 @@ def settings():
 @admin_required
 def analytics():
     db = get_db()
-    term = request.args.get("term") or get_setting(db, "current_term")
+    term = request.args.get("term") or admin_term(db)
     formals = db.execute(
         "SELECT * FROM formals WHERE term=? ORDER BY dt", (term,)).fetchall()
     rows = []
@@ -409,19 +474,22 @@ def usage():
 def terms():
     db = get_db()
     if request.method == "POST":
+        from ..terms import all_terms, create_term, make_current
         new_term = request.form.get("new_term", "").strip()
         if new_term:
-            if new_term != get_setting(db, "current_term"):
-                set_setting(db, "results_published", "0")
-            set_setting(db, "current_term", new_term)
-            audit(db, "admin", "term_rollover", f"current_term={new_term}")
-            flash(f"Current term is now “{new_term}”. Add its formals, then open "
-                  "the ballot in Settings.", "ok")
+            if new_term not in all_terms(db):
+                create_term(db, new_term)
+            make_current(db, new_term)
+            session["admin_term"] = new_term
+            flash(f"Current term is now “{new_term}”. Add its formals, then set "
+                  "its ballot window on the dashboard.", "ok")
         return redirect(url_for("admin.terms"))
+    from ..terms import all_terms, is_published
     current = get_setting(db, "current_term")
-    rows = db.execute(
-        "SELECT term, COUNT(*) formals, SUM(slots) seats FROM formals "
-        "GROUP BY term ORDER BY MIN(dt) DESC").fetchall()
+    counts = {r["term"]: r for r in db.execute(
+        "SELECT term, COUNT(*) formals, SUM(slots) seats FROM formals GROUP BY term")}
+    rows = [{"term": t, "formals": counts[t]["formals"] if t in counts else 0,
+             "seats": counts[t]["seats"] if t in counts else 0} for t in all_terms(db)]
     stats = []
     for r in rows:
         attending = db.execute(
@@ -429,7 +497,8 @@ def terms():
             "WHERE f.term=? AND a.status='active'", (r["term"],)).fetchone()["n"]
         stats.append({"term": r["term"], "formals": r["formals"],
                       "seats": r["seats"] or 0, "attending": attending,
-                      "current": r["term"] == current})
+                      "current": r["term"] == current,
+                      "published": is_published(db, r["term"])})
     return render_template("admin/terms.html", stats=stats, current=current)
 
 
@@ -574,7 +643,7 @@ def formal_new():
             flash("Formal created.", "ok")
             return redirect(url_for("admin.dashboard"))
     return render_template("admin/formal_form.html", f=None, incoming=None,
-                           default_term=get_setting(db, "current_term"),
+                           default_term=admin_term(db),
                            catering_date=request.form.get("catering_date", ""),
                            endowments=_endowment_map(db))
 
@@ -644,8 +713,8 @@ def _email_date_change(db, fid, old_dt):
     from ..ics import formal_ics
     from ..services import attendee_emails
     f = db.execute("SELECT * FROM formals WHERE id=?", (fid,)).fetchone()
-    if (f["term"] == get_setting(db, "current_term")
-            and get_setting(db, "results_published", "1") != "1"):
+    from ..terms import is_published
+    if not is_published(db, f["term"]):
         return "Results are still a draft, so attendees weren't emailed."
     emails = attendee_emails(db, fid)
     if not emails:
@@ -753,7 +822,7 @@ def formals_import():
                 "catering_at, wine_fee, wine_price) "
                 "VALUES (?,?,?,?,?,?,?,'open',?,?,?,?,?,?,?,?,?,?)",
                 (college, dt, r.get("price", ""), slots,
-                 r.get("term") or get_setting(db, "current_term"),
+                 r.get("term") or admin_term(db),
                  b_open, b_close,
                  r.get("location", ""), r.get("instructions", ""),
                  r.get("host_name", ""), r.get("host_email", ""),
@@ -766,7 +835,7 @@ def formals_import():
             created += 1
         if created:
             audit(db, "admin", "formals_import", f"created={created}")
-            seat_admin(db, get_setting(db, "current_term"))
+            seat_admin(db, admin_term(db))
             flash(f"Imported {created} formal(s).", "ok")
         for e in errors[:10]:
             flash(e, "error")
@@ -778,8 +847,9 @@ def formals_import():
 @bp.route("/allocate", methods=["GET", "POST"])
 @admin_required
 def allocate():
+    from ..terms import set_term_setting
     db = get_db()
-    term = get_setting(db, "current_term")
+    term = admin_term(db)
     if request.method == "POST":
         term = request.form.get("term", term).strip()
         seed = request.form.get("seed", "").strip() or None
@@ -797,7 +867,7 @@ def allocate():
             "WHERE a.status='active' AND a.notified=1 AND f.term=? LIMIT 1",
             (term,)).fetchone()
         if not already_public:
-            set_setting(db, "results_published", "0")
+            set_term_setting(db, "results_published", term, "0")
         flash(f"Generated: run #{run_id}, {placed} places assigned "
               f"(seed {used_seed}). This is a DRAFT — no emails sent yet. "
               f"Check the rosters, then hit Publish on the dashboard.", "ok")
@@ -813,7 +883,7 @@ def preview():
     """One-page sanity check before publishing: every formal for the current
     term (date order) with its attendees, plus entrants left with nothing."""
     db = get_db()
-    term = get_setting(db, "current_term")
+    term = admin_term(db)
     formals = db.execute(
         "SELECT * FROM formals WHERE term=? AND status IN ('open','allocated') "
         "ORDER BY dt", (term,)).fetchall()
@@ -843,7 +913,7 @@ def preview():
     return render_template(
         "admin/preview.html", term=term, formals=formals, rosters=rosters,
         unseated=unseated,
-        results_published=get_setting(db, "results_published", "1") == "1")
+        results_published=is_published(db, term))
 
 
 def _result_batches(db, term, only_unnotified):
@@ -910,16 +980,17 @@ def _deliver_results(winners, missed, term):
 def publish():
     """Make results public and email every not-yet-notified winner their
     formals (+ calendar invites); entrants left with nothing get a miss note."""
+    from ..terms import set_term_setting, term_setting
     db = get_db()
-    term = get_setting(db, "current_term")
+    term = admin_term(db)
     winners, missed, alloc_ids = _result_batches(db, term, only_unnotified=True)
-    first_publish = get_setting(db, "results_published") != "1"
+    first_publish = term_setting(db, "results_published", term) != "1"
     if not first_publish:
         missed = []  # only nag the unlucky once, on first publish
     if alloc_ids:
         db.execute("UPDATE allocations SET notified=1 WHERE id IN (%s)"
                    % ",".join("?" * len(alloc_ids)), alloc_ids)
-    set_setting(db, "results_published", "1")
+    set_term_setting(db, "results_published", term, "1")
     # Silently subscribe entrants to the formals they ranked but didn't get.
     auto_subs = auto_subscribe_unmet(db, term)
     audit(db, "admin", "publish_results",
@@ -939,13 +1010,14 @@ def republish():
     """Resend result emails to EVERYONE for the current term: every member
     with active places gets their full result again (+ calendar invites),
     every entrant without a place gets the miss note again."""
+    from ..terms import set_term_setting
     db = get_db()
-    term = get_setting(db, "current_term")
+    term = admin_term(db)
     winners, missed, alloc_ids = _result_batches(db, term, only_unnotified=False)
     if alloc_ids:
         db.execute("UPDATE allocations SET notified=1 WHERE id IN (%s)"
                    % ",".join("?" * len(alloc_ids)), alloc_ids)
-    set_setting(db, "results_published", "1")
+    set_term_setting(db, "results_published", term, "1")
     audit(db, "admin", "republish_results",
           f"term={term} winners={len(winners)} missed={len(missed)}")
     _deliver_results(winners, missed, term)
@@ -1025,8 +1097,8 @@ def _confirm_admin_assign(db, uid, fid, inherited):
         db.execute("UPDATE allocations SET notified=1 WHERE user_id=? AND formal_id=? "
                    "AND status='active'", (uid, fid))
         return "The formal has already happened, so no confirmation email was sent."
-    if (f["term"] == get_setting(db, "current_term")
-            and get_setting(db, "results_published", "1") != "1"):
+    from ..terms import is_published
+    if not is_published(db, f["term"]):
         return "Results are still a draft, so they'll get their email when you publish."
     ics = [(f"{f['host_college']}-formal.ics", formal_ics(f).encode())]
     if not emailer.admin_assigned_email(u["email"], f, ics, inherited):
@@ -1496,7 +1568,7 @@ def incoming_participant_delete(pid):
 @admin_required
 def users():
     db = get_db()
-    term = get_setting(db, "current_term")
+    term = admin_term(db)
     rows = db.execute(
         "SELECT u.*, (SELECT COUNT(*) FROM allocations a WHERE a.user_id=u.id AND "
         "a.status='active') AS places, (SELECT COUNT(*) FROM preferences p "
@@ -1511,7 +1583,7 @@ def users():
 def user_detail(uid):
     from ..services import user_ballot_detail
     db = get_db()
-    term = get_setting(db, "current_term")
+    term = admin_term(db)
     d = user_ballot_detail(db, uid, term)
     if d is None:
         flash("No such user.", "error")
@@ -1624,8 +1696,8 @@ def remind_unranked():
     them to do so before the ballot closes."""
     from ..services import local_now, parse_local, unranked_members
     db = get_db()
-    term = get_setting(db, "current_term")
-    close = get_setting(db, "term_ballot_close")
+    term = admin_term(db)
+    close = term_setting(db, "term_ballot_close", term)
     deadline = _deadline_label(close)
     try:
         closed = bool(close) and parse_local(close) <= local_now()
@@ -1668,7 +1740,7 @@ def remind_unranked():
 def groups():
     from ..services import ballot_groups_overview
     db = get_db()
-    term = get_setting(db, "current_term")
+    term = admin_term(db)
     return render_template("admin/groups.html", term=term,
                            groups=ballot_groups_overview(db, term) if term else [])
 
@@ -1681,7 +1753,7 @@ def simulate_admin():
     from ..services import simulate_ballot
     from .main import _SIM_SEMAPHORE
     db = get_db()
-    term = get_setting(db, "current_term")
+    term = admin_term(db)
     if not _SIM_SEMAPHORE.acquire(blocking=False):
         flash("A simulation is already running — try again in a few seconds.", "error")
         return redirect(url_for("admin.dashboard"))
