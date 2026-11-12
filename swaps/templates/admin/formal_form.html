@@ -57,7 +57,8 @@
          value="{{ incoming['dt'].replace(' ', 'T') if incoming else '' }}">
   <p class="muted">Their contact is the host contact above. Send them their guest-list
   link from <a href="/admin/incoming">Incoming swaps</a>{% if incoming and incoming['submitted_at'] %}
-  — <b>their list has been submitted</b>{% endif %}.</p>
+  — <b>their list has been submitted</b>{% endif %}.
+  {% if incoming %}<a class="btn small" href="/admin/incoming/{{ incoming['id'] }}/guests?back=/admin/formals/{{ f['id'] }}/edit">✎ Edit / submit their guest list</a>{% endif %}</p>
   <label>Number of slots</label>
   <input type="number" name="slots" min="1" required value="{{ f['slots'] if f else 10 }}">
   <label>Term</label>

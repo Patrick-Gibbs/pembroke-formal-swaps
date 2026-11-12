@@ -8,8 +8,7 @@
 
   {% if swap['submitted_at'] %}
   <p class="note">✓ Thank you — this guest list has been submitted and sent to our
-  Formal Hall team. It can't be changed here; if something is wrong, please reply to
-  the email you received or contact the Pembroke swaps officer.</p>
+  Formal Hall team. If anything needs updating, please contact the Pembroke swaps officer.</p>
   <table>
     <tr><th>Name</th><th>Dietary requirements</th></tr>
     {% for p in people %}
@@ -42,9 +41,6 @@
       </tr>
       {% endfor %}
     </table>
-    <label style="font-weight:normal"><input type="checkbox" name="confirm" value="1" required>
-      This is our final guest list. I understand it is sent to Pembroke's Formal Hall team
-      and can't be changed afterwards.</label>
     <p><button>Submit guest list</button></p>
   </form>
   {% endif %}

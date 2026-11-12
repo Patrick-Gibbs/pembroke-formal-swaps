@@ -81,12 +81,11 @@ def test_formal_form_sets_up_incoming_and_full_flow(db_path, monkeypatch):
         sess["_csrf"] = "g"
     rows = {"_csrf": "g", "first_0": "Ann", "last_0": "Lee", "dietary_0": "Vegan",
             "first_1": "Bob", "last_1": "Ray"}
-    r = guest.post(link, data=rows)                         # no confirmation tick
-    assert "final guest list" in r.data.decode()
-    assert c.execute("SELECT submitted_at FROM incoming_swaps").fetchone()[0] is None
+    assert "final guest list" not in form and 'name="confirm"' not in form
     r = guest.post(link, data=dict(rows, first_2="Cy"))     # half a name
     assert "Guest 3" in r.data.decode()
-    (r, mail) = _mail(guest.post, link, data=dict(rows, confirm="1"), follow_redirects=True)
+    assert c.execute("SELECT submitted_at FROM incoming_swaps").fetchone()[0] is None
+    (r, mail) = _mail(guest.post, link, data=rows, follow_redirects=True)
     assert "has been submitted" in r.data.decode()
     assert "DEV EMAIL to=formalhall@pem.cam.ac.uk" in mail
     assert "new@jesus.cam.ac.uk" in mail and "me@pem.cam.ac.uk" in mail   # both CC'd
@@ -94,7 +93,7 @@ def test_formal_form_sets_up_incoming_and_full_flow(db_path, monkeypatch):
     s = c.execute("SELECT * FROM incoming_swaps").fetchone()
     assert s["submitted_at"] and s["catering_sent_at"]
     # Locked: a second submission changes nothing.
-    guest.post(link, data={"_csrf": "g", "first_0": "Zed", "last_0": "Q", "confirm": "1"})
+    guest.post(link, data={"_csrf": "g", "first_0": "Zed", "last_0": "Q"})
     assert [r[0] for r in c.execute("SELECT first_name FROM incoming_participants "
                                     "ORDER BY id")] == ["Ann", "Bob"]
     assert 'name="first_0"' not in guest.get(link).data.decode()

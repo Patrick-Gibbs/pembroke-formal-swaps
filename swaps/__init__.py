@@ -44,6 +44,9 @@ def create_app():
         resp.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
         return resp
 
+    from . import usage
+    app.after_request(usage.record)
+
     @app.context_processor
     def inject():
         return {

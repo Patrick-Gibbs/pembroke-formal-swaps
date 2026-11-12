@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Site usage — Admin{% endblock %}
+{% block content %}
+<style>
+  .u-tiles { display:flex; flex-wrap:wrap; gap:1.5rem; margin:0 }
+  .u-tiles b { font-size:1.4rem }
+  .u-chart { display:flex; align-items:flex-end; gap:2px; height:140px;
+             border-bottom:1px solid #b8c4d0; padding-top:.5rem; overflow-x:auto }
+  .u-col { flex:1 1 0; min-width:6px; display:flex; flex-direction:column;
+           justify-content:flex-end; height:100%; cursor:default }
+  .u-bar { background:#003b6f; border-radius:4px 4px 0 0; min-height:0 }
+  .u-col:hover .u-bar { background:#2a6fb0 }
+  .u-axis { display:flex; justify-content:space-between; font-size:.75rem; color:#5a6b7b }
+  .u-hbar { display:inline-block; height:.6rem; background:#003b6f; border-radius:0 4px 4px 0;
+            vertical-align:middle; margin-right:.4rem }
+  details summary { cursor:pointer }
+</style>
+
+<h1>Site usage</h1>
+<p>
+  <a class="btn ghost" href="/admin/">Back</a>
+  <a class="btn ghost" href="/admin/analytics">Ballot analytics</a>
+  {% for r in ranges %}
+  <a class="btn {{ '' if r == rng else 'ghost' }}" href="?range={{ r }}">{{ 'All time' if r == 'all' else 'Last ' ~ r ~ ' days' }}</a>
+  {% endfor %}
+</p>
+<p class="muted">Page views count members and visitors (your own admin browsing and bots are
+left out). Visit tracking started {{ (tracking_since | uk_datetime) if tracking_since else 'just now' }} UTC;
+login history goes back further. Times below are UK time.</p>
+
+<div class="card">
+  <p class="u-tiles">
+    <span><b>{{ totals['views'] }}</b><br><span class="muted">page views</span></span>
+    <span><b>{{ totals['visitors'] }}</b><br><span class="muted">unique visitors (browsers)</span></span>
+    <span><b>{{ totals['members_active'] }}</b> <span class="muted">/ {{ totals['members'] }}</span><br><span class="muted">members active</span></span>
+    <span><b>{{ totals['logins'] }}</b><br><span class="muted">logins ({{ totals['login_members'] }} members)</span></span>
+    <span><b>{{ totals['failed_logins'] }}</b><br><span class="muted">failed logins</span></span>
+    <span><b>{{ totals['signups'] }}</b><br><span class="muted">new sign-ups</span></span>
+    <span><b>{{ totals['logged_in_share'] }}%</b><br><span class="muted">views while logged in</span></span>
+    <span><b>{{ totals['mobile_share'] }}%</b><br><span class="muted">views on mobile</span></span>
+  </p>
+  <p class="muted" style="margin:.6rem 0 0">Also: {{ totals['admin_views'] }} admin page views,
+  {{ totals['admin_logins'] }} admin logins, {{ totals['bot_views'] }} bot requests (excluded).</p>
+</div>
+
+<h2>Page views per day</h2>
+{% set dmax = (daily | map(attribute='views') | max) if daily else 0 %}
+{% if dmax %}
+<div class="u-chart" role="img" aria-label="Page views per day">
+  {% for d in daily %}
+  <div class="u-col" title="{{ d['day'] | uk_date }}: {{ d['views'] }} view(s), {{ d['visitors'] }} visitor(s)">
+    <div class="u-bar" style="height:{{ (100 * d['views'] / dmax) | round(1) }}%"></div>
+  </div>
+  {% endfor %}
+</div>
+<div class="u-axis"><span>{{ daily[0]['day'] | uk_date }}</span><span>peak {{ dmax }}/day</span><span>{{ daily[-1]['day'] | uk_date }}</span></div>
+<details><summary class="muted">Table</summary>
+  <table><tr><th>Day</th><th>Views</th><th>Visitors</th></tr>
+  {% for d in daily | reverse %}{% if d['views'] %}<tr><td>{{ d['day'] | uk_date }}</td><td>{{ d['views'] }}</td><td>{{ d['visitors'] }}</td></tr>{% endif %}{% endfor %}
+  </table></details>
+{% else %}<p class="muted">No page views recorded in this period yet.</p>{% endif %}
+
+<div style="display:flex;flex-wrap:wrap;gap:2rem">
+<div style="flex:1 1 20rem">
+<h2>Busiest hours</h2>
+{% set hmax = hours | max %}
+{% if hmax %}
+<div class="u-chart" style="height:100px" role="img" aria-label="Page views by hour of day">
+  {% for n in hours %}
+  <div class="u-col" title="{{ '%02d' % loop.index0 }}:00–{{ '%02d' % loop.index0 }}:59: {{ n }} view(s)">
+    <div class="u-bar" style="height:{{ (100 * n / hmax) | round(1) }}%"></div>
+  </div>
+  {% endfor %}
+</div>
+<div class="u-axis"><span>00:00</span><span>12:00</span><span>23:00</span></div>
+{% else %}<p class="muted">—</p>{% endif %}
+</div>
+<div style="flex:1 1 14rem">
+<h2>By day of week</h2>
+{% set wmax = weekdays | map(attribute=1) | max %}
+<table>
+  {% for name, n in weekdays %}
+  <tr><td>{{ name }}</td><td><span class="u-hbar" style="width:{{ (8 * n / wmax) | round(2) if wmax else 0 }}rem"></span>{{ n }}</td></tr>
+  {% endfor %}
+</table>
+</div>
+</div>
+
+<h2>What members did</h2>
+<table>
+  {% for label, n in activity %}<tr><td>{{ label }}</td><td><b>{{ n }}</b></td></tr>{% endfor %}
+</table>
+
+<div style="display:flex;flex-wrap:wrap;gap:2rem">
+<div style="flex:1 1 22rem">
+<h2>Top pages</h2>
+<table>
+  <tr><th>Page</th><th>Views</th><th>Visitors</th></tr>
+  {% for p in pages %}<tr><td><code>{{ p['route'] }}</code></td><td>{{ p['views'] }}</td><td>{{ p['visitors'] }}</td></tr>
+  {% else %}<tr><td colspan="3" class="muted">None yet</td></tr>{% endfor %}
+</table>
+</div>
+<div style="flex:1 1 18rem">
+<h2>Most-viewed formals</h2>
+<table>
+  <tr><th>Formal</th><th>Views</th><th>Visitors</th></tr>
+  {% for f in formal_views %}<tr><td><a href="/admin/formals/{{ f['id'] }}/roster">{{ f['host_college'] }}</a> <span class="muted">{{ f['dt'] | uk_date }}</span></td><td>{{ f['views'] }}</td><td>{{ f['visitors'] }}</td></tr>
+  {% else %}<tr><td colspan="3" class="muted">None yet</td></tr>{% endfor %}
+</table>
+</div>
+</div>
+
+<h2>Per member</h2>
+<p class="muted">{{ per_user | length }} verified members; {{ never }} with no visits or logins in this period.</p>
+<table>
+  <tr><th>Member</th><th>Page views</th><th>Days active</th><th>Last seen (UTC)</th><th>Logins</th><th>Last login (UTC)</th></tr>
+  {% for u in per_user %}
+  <tr>
+    <td><a href="/admin/users/{{ u['id'] }}">{{ u['first_name'] }} {{ u['last_name'] }}</a> <span class="muted">{{ u['email'] }}</span></td>
+    <td>{{ u['views'] }}</td><td>{{ u['days'] }}</td>
+    <td>{{ (u['last_seen'] | uk_datetime) if u['last_seen'] else '—' }}</td>
+    <td>{{ u['logins'] }}</td>
+    <td>{{ (u['last_login'] | uk_datetime) if u['last_login'] else '—' }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

@@ -1,6 +1,6 @@
 import csv
 import io
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from flask import (Blueprint, Response, flash, redirect, render_template,
                    request, session, url_for)
@@ -287,6 +287,121 @@ def email_templates():
             "customised": bool(ov),
         })
     return render_template("admin/email_templates.html", items=items)
+
+
+USAGE_RANGES = {"7": 7, "30": 30, "90": 90, "all": None}
+
+
+@bp.route("/usage")
+@admin_required
+def usage():
+    """Site usage: page views, visitors, logins, per-member activity."""
+    from zoneinfo import ZoneInfo
+    from ..services import utcnow_str
+    db = get_db()
+    rng = request.args.get("range", "30")
+    days = USAGE_RANGES.get(rng, 30)
+    since = ((datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+             if days else "0000")
+    uk = ZoneInfo(config.TIMEZONE)
+
+    def one(sql, *a):
+        return db.execute(sql, a).fetchone()[0] or 0
+
+    human = "bot=0 AND at >= ?"
+    views = db.execute(f"SELECT at, user_id, visitor, is_admin, mobile, route FROM page_views "
+                       f"WHERE {human}", (since,)).fetchall()
+    member_views = [v for v in views if not v["is_admin"]]
+    # Daily / hour / weekday in UK time.
+    daily, hours, weekdays = {}, [0] * 24, [0] * 7
+    for v in member_views:
+        t = datetime.fromisoformat(v["at"]).replace(tzinfo=timezone.utc).astimezone(uk)
+        d = t.date().isoformat()
+        daily.setdefault(d, [0, set()])
+        daily[d][0] += 1
+        daily[d][1].add(v["visitor"])
+        hours[t.hour] += 1
+        weekdays[t.weekday()] += 1
+    if days:
+        start = (datetime.now(uk) - timedelta(days=days - 1)).date()
+        span = [(start + timedelta(days=i)).isoformat() for i in range(days)]
+    else:
+        span = sorted(daily)
+    daily_rows = [{"day": d, "views": daily.get(d, [0, set()])[0],
+                   "visitors": len(daily.get(d, [0, set()])[1])} for d in span]
+
+    logins = "kind='user' AND identifier NOT LIKE 'ip:%' AND at >= ?"
+    totals = {
+        "views": len(member_views),
+        "visitors": len({v["visitor"] for v in member_views}),
+        "members_active": len({v["user_id"] for v in member_views if v["user_id"]}),
+        "logged_in_share": round(100 * sum(1 for v in member_views if v["user_id"])
+                                 / len(member_views)) if member_views else 0,
+        "mobile_share": round(100 * sum(1 for v in member_views if v["mobile"])
+                              / len(member_views)) if member_views else 0,
+        "admin_views": len(views) - len(member_views),
+        "bot_views": one("SELECT COUNT(*) FROM page_views WHERE bot=1 AND at >= ?", since),
+        "logins": one(f"SELECT COUNT(*) FROM login_attempts WHERE success=1 AND {logins}", since),
+        "login_members": one(f"SELECT COUNT(DISTINCT identifier) FROM login_attempts "
+                             f"WHERE success=1 AND {logins}", since),
+        "failed_logins": one(f"SELECT COUNT(*) FROM login_attempts WHERE success=0 AND {logins}",
+                             since),
+        "admin_logins": one("SELECT COUNT(*) FROM login_attempts WHERE kind='admin' "
+                            "AND identifier NOT LIKE 'ip:%' AND success=1 AND at >= ?", since),
+        "signups": one("SELECT COUNT(*) FROM users WHERE email_verified=1 AND created_at >= ?",
+                       since),
+        "members": one("SELECT COUNT(*) FROM users WHERE email_verified=1"),
+    }
+    activity = [
+        ("Places claimed by members", one("SELECT COUNT(*) FROM audit_log WHERE action='claim' "
+                                          "AND actor LIKE 'user:%' AND at >= ?", since)),
+        ("Places added by admin", one("SELECT COUNT(*) FROM audit_log WHERE "
+                                      "action='manual_assign' AND at >= ?", since)),
+        ("Cancellations by members", one("SELECT COUNT(*) FROM audit_log WHERE action='cancel' "
+                                         "AND actor LIKE 'user:%' AND at >= ?", since)),
+        ("Swap requests made", one("SELECT COUNT(*) FROM swap_requests WHERE created_at >= ?",
+                                   since)),
+        ("Swaps accepted", one("SELECT COUNT(*) FROM swap_requests WHERE status='accepted' "
+                               "AND responded_at >= ?", since)),
+        ("'Email me if a place opens' subscriptions", one(
+            "SELECT COUNT(*) FROM subscriptions WHERE created_at >= ?", since)),
+        ("Reviews left", one("SELECT COUNT(*) FROM reviews WHERE created_at >= ?", since)),
+        ("Incoming guest lists submitted", one(
+            "SELECT COUNT(*) FROM incoming_swaps WHERE submitted_at >= ?", since)),
+        ("Emails sent", one("SELECT COUNT(*) FROM email_log WHERE ok=1 AND at >= ?", since)),
+        ("Emails failed", one("SELECT COUNT(*) FROM email_log WHERE ok=0 AND at >= ?", since)),
+    ]
+    pages = db.execute(
+        f"SELECT route, COUNT(*) AS views, COUNT(DISTINCT visitor) AS visitors "
+        f"FROM page_views WHERE {human} AND is_admin=0 GROUP BY route "
+        f"ORDER BY views DESC LIMIT 25", (since,)).fetchall()
+    formal_views = db.execute(
+        f"SELECT f.id, f.host_college, f.dt, COUNT(*) AS views, "
+        f"COUNT(DISTINCT p.visitor) AS visitors FROM page_views p "
+        f"JOIN formals f ON f.id = p.formal_id WHERE p.{human.replace('at >=', 'p.at >=')} "
+        f"AND p.is_admin=0 GROUP BY f.id ORDER BY views DESC LIMIT 15", (since,)).fetchall()
+    per_user = db.execute(
+        f"""SELECT u.id, u.first_name, u.last_name, u.email,
+               COALESCE(v.views, 0) AS views, COALESCE(v.days, 0) AS days, v.last_seen,
+               COALESCE(l.logins, 0) AS logins, l.last_login
+            FROM users u
+            LEFT JOIN (SELECT user_id, COUNT(*) AS views,
+                              COUNT(DISTINCT date(at)) AS days, MAX(at) AS last_seen
+                       FROM page_views WHERE {human} AND is_admin=0 GROUP BY user_id) v
+                   ON v.user_id = u.id
+            LEFT JOIN (SELECT identifier, COUNT(*) AS logins, MAX(at) AS last_login
+                       FROM login_attempts WHERE success=1 AND {logins}
+                       GROUP BY identifier) l ON l.identifier = lower(u.email)
+            WHERE u.email_verified=1
+            ORDER BY views DESC, logins DESC, u.last_name""", (since, since)).fetchall()
+    never = sum(1 for u in per_user if not u["views"] and not u["logins"])
+    tracking_since = one("SELECT MIN(at) FROM page_views") or None
+    return render_template(
+        "admin/usage.html", rng=rng, ranges=list(USAGE_RANGES), totals=totals,
+        activity=activity, daily=daily_rows, hours=hours,
+        weekdays=list(zip(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], weekdays)),
+        pages=pages, formal_views=formal_views, per_user=per_user, never=never,
+        tracking_since=tracking_since, now=utcnow_str())
 
 
 @bp.route("/terms", methods=["GET", "POST"])
@@ -1280,6 +1395,40 @@ def incoming_send_links():
     flash(f"Sent {sent} guest-list link(s)." + (" " + " ".join(problems) if problems else ""),
           "ok" if not problems else "error")
     return redirect(url_for("admin.incoming"))
+
+
+@bp.route("/incoming/<int:sid>/guests", methods=["GET", "POST"])
+@admin_required
+def incoming_guests(sid):
+    """Admin version of the guest-list form: fill in or correct it, and submit
+    it to the Formal Hall team on the other college's behalf."""
+    from .. import incoming as inc
+    db = get_db()
+    swap = db.execute("SELECT * FROM incoming_swaps WHERE id=?", (sid,)).fetchone()
+    if swap is None:
+        return redirect(url_for("admin.incoming"))
+    error, guests = None, None
+    rows = max(swap["tickets"], db.execute(
+        "SELECT COUNT(*) FROM incoming_participants WHERE swap_id=?", (sid,)).fetchone()[0])
+    if request.method == "POST":
+        try:
+            guests = inc.parse_guests(request.form, rows)
+            ok, msg = inc.admin_save(db, sid, guests,
+                                     submit=request.form.get("action") == "submit")
+            flash(msg, "ok" if ok else "error")
+            back = request.form.get("back")
+            if back and back.startswith("/admin/"):
+                return redirect(back)
+            return redirect(url_for("admin.incoming_guests", sid=sid))
+        except inc.GuestListError as e:
+            error = str(e)
+    if guests is None:
+        guests = [(p["first_name"], p["last_name"], p["dietary"]) for p in db.execute(
+            "SELECT * FROM incoming_participants WHERE swap_id=? ORDER BY id", (sid,))]
+    return render_template("admin/incoming_guests.html", swap=swap, rows=rows,
+                           guests=guests, error=error,
+                           deadline=inc.deadline(db, swap).isoformat(),
+                           back=request.args.get("back", ""))
 
 
 @bp.route("/incoming/<int:sid>/send-catering", methods=["POST"])

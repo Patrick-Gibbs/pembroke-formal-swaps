@@ -122,6 +122,35 @@ def parse_guests(form, tickets):
     return guests
 
 
+def _save(conn, sid, guests):
+    """Replace a swap's guest list, keeping each kept guest's admin notes."""
+    notes = {(r["first_name"].lower(), r["last_name"].lower()): r["notes"] for r in conn.execute(
+        "SELECT first_name, last_name, notes FROM incoming_participants WHERE swap_id=?",
+        (sid,))}
+    conn.execute("DELETE FROM incoming_participants WHERE swap_id=?", (sid,))
+    conn.executemany(
+        "INSERT INTO incoming_participants(swap_id, first_name, last_name, dietary, notes) "
+        "VALUES (?,?,?,?,?)",
+        [(sid, f, l, d, notes.get((f.lower(), l.lower()), "")) for f, l, d in guests])
+
+
+def admin_save(conn, sid, guests, submit=False):
+    """Admin fills in / corrects a guest list (allowed even once submitted).
+    submit=True also marks it submitted (stopping reminders) and emails the
+    Formal Hall team. Returns (ok, message)."""
+    with immediate(conn):
+        _save(conn, sid, guests)
+        if submit:
+            conn.execute("UPDATE incoming_swaps SET submitted_at=COALESCE(submitted_at, ?) "
+                         "WHERE id=?", (utcnow_str(), sid))
+        audit(conn, "admin", "incoming_admin_save",
+              f"swap={sid} guests={len(guests)} submit={int(submit)}")
+    if not submit:
+        return True, f"Saved {len(guests)} guest(s)."
+    ok, msg = send_to_catering(conn, sid)
+    return ok, f"Saved {len(guests)} guest(s) and submitted. " + msg
+
+
 def submit(conn, token, guests):
     """Save and lock a contact's list, then email the Formal Hall team.
     Returns (swap row, catering ok). Raises GuestListError if it can't be
@@ -135,10 +164,7 @@ def submit(conn, token, guests):
             raise GuestListError("This guest list has already been submitted.")
         if len(guests) > swap["tickets"]:
             raise GuestListError(f"You have {swap['tickets']} place(s).")
-        conn.execute("DELETE FROM incoming_participants WHERE swap_id=?", (swap["id"],))
-        conn.executemany(
-            "INSERT INTO incoming_participants(swap_id, first_name, last_name, dietary) "
-            "VALUES (?,?,?,?)", [(swap["id"], *g) for g in guests])
+        _save(conn, swap["id"], guests)
         conn.execute("UPDATE incoming_swaps SET submitted_at=? WHERE id=?",
                      (utcnow_str(), swap["id"]))
         audit(conn, "guest", "incoming_submit", f"swap={swap['id']} guests={len(guests)}")

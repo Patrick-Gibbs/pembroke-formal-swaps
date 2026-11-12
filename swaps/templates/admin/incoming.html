@@ -55,6 +55,7 @@ you CC'd. If they haven't submitted, reminders go 3 days before the deadline, on
   <p>
     <input type="text" readonly value="{{ links[s['id']] }}" style="max-width:26rem;font-size:.8rem" onclick="this.select()">
     <button class="small ghost" type="button" onclick="navigator.clipboard.writeText('{{ links[s['id']] }}');this.textContent='Copied'">Copy link</button>
+    <a class="btn small" href="/admin/incoming/{{ s['id'] }}/guests">✎ Edit / submit guest list</a>
     {% if not s['submitted_at'] %}
     <form class="inline" method="post" action="/admin/incoming/{{ s['id'] }}/send-link">
       <input type="hidden" name="_csrf" value="{{ csrf_token() }}">

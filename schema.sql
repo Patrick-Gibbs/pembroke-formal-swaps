@@ -129,6 +129,25 @@ CREATE TABLE IF NOT EXISTS email_blacklist (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- One row per page view (site usage analytics). `route` is the URL pattern
+-- (e.g. /formals/<int:formal_id>/claim) — never the raw path, so secret
+-- tokens in links are not stored. `visitor` is a random per-browser id.
+CREATE TABLE IF NOT EXISTS page_views (
+    id INTEGER PRIMARY KEY,
+    at TEXT NOT NULL DEFAULT (datetime('now')),   -- UTC
+    user_id INTEGER,                 -- logged-in member, else NULL
+    visitor TEXT,
+    is_admin INTEGER NOT NULL DEFAULT 0,
+    method TEXT NOT NULL,
+    route TEXT NOT NULL,
+    formal_id INTEGER,
+    status INTEGER NOT NULL,
+    mobile INTEGER NOT NULL DEFAULT 0,
+    bot INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_page_views_at ON page_views(at);
+CREATE INDEX IF NOT EXISTS idx_page_views_user ON page_views(user_id, at);
+
 CREATE TABLE IF NOT EXISTS login_attempts (
     id INTEGER PRIMARY KEY,
     kind TEXT NOT NULL,              -- 'user' | 'admin'

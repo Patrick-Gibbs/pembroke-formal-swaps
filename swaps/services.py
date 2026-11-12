@@ -964,7 +964,7 @@ def delete_user_data(conn, user_id):
         conn.execute("DELETE FROM review_photos WHERE review_id IN "
                      "(SELECT id FROM reviews WHERE user_id=?)", (user_id,))
         for t in ("reviews", "preferences", "ballot_caps", "subscriptions",
-                  "auto_subscriptions", "release_emails", "allocations",
+                  "auto_subscriptions", "release_emails", "page_views", "allocations",
                   "ballot_group_members"):
             conn.execute(f"DELETE FROM {t} WHERE user_id=?", (user_id,))  # noqa: S608 fixed names
         # Disband any group this user leads (remove all its members, then the group).

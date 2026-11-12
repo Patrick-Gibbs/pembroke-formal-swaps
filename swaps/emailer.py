@@ -173,8 +173,7 @@ TEMPLATES = {
                 "<p>Please enter your guests' names and dietary requirements by "
                 "<b>{deadline}</b> using this link (no account needed):</p>"
                 "<p><a href=\"{link}\">{link}</a></p>"
-                "<p>Once you confirm the list it goes straight to our Formal Hall team "
-                "and can't be changed, so please check it carefully.</p>"
+                "<p>Once you submit the list it goes straight to our Formal Hall team.</p>"
                 "<p>{signoff}</p>",
     },
     "incoming_reminder": {

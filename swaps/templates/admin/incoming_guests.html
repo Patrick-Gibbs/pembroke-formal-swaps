@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Guest list — {{ swap['guest_college'] }} — Admin{% endblock %}
+{% block content %}
+<h1>Incoming guest list — {{ swap['guest_college'] }}</h1>
+<p><a class="btn ghost" href="{{ back or '/admin/incoming' }}">Back</a></p>
+<div class="card">
+  <p><b>{{ swap['guest_college'] }}</b> at Pembroke on <b>{{ swap['dt'] | uk_datetime }}</b>
+  &middot; {{ swap['tickets'] }} place(s) &middot; due {{ deadline | uk_date }} &middot;
+  {% if swap['submitted_at'] %}✓ submitted {{ swap['submitted_at'] | uk_datetime }} UTC{% if swap['catering_sent_at'] %}, sent to the Formal Hall team{% endif %}
+  {% else %}not submitted yet{% endif %}</p>
+  <p class="muted">Fill in or correct the list on {{ swap['guest_college'] }}'s behalf.
+  <b>Save</b> just stores it. <b>Submit</b> also marks it submitted (their link locks and
+  reminders stop) and emails it to the Formal Hall team, with their contact and you CC'd.
+  Leave a row blank to drop it.</p>
+  {% if error %}<p class="flash error">{{ error }}</p>{% endif %}
+  <form method="post">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="back" value="{{ back }}">
+    <table>
+      <tr><th>#</th><th>First name</th><th>Last name</th><th>Dietary requirements</th></tr>
+      {% for i in range(rows) %}
+      {% set g = guests[i] if i < guests|length else ('', '', '') %}
+      <tr>
+        <td>{{ i + 1 }}</td>
+        <td><input type="text" name="first_{{ i }}" value="{{ g[0] }}" maxlength="80" style="max-width:9rem"></td>
+        <td><input type="text" name="last_{{ i }}" value="{{ g[1] }}" maxlength="80" style="max-width:9rem"></td>
+        <td><input type="text" name="dietary_{{ i }}" value="{{ g[2] }}" maxlength="300" placeholder="blank if none" style="max-width:14rem"></td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% if not rows %}<p class="muted">Set the number of tickets we host first.</p>{% endif %}
+    <p>
+      <button class="ghost" name="action" value="save">Save</button>
+      <button name="action" value="submit"
+              onclick="return confirm('{{ 'Save and resend this list to the Formal Hall team?' if swap['catering_sent_at'] else 'Submit this list and email it to the Formal Hall team?' }}')">
+        {{ 'Save & resend to Formal Hall team' if swap['catering_sent_at'] else 'Save & submit to Formal Hall team' }}</button>
+    </p>
+  </form>
+</div>
+{% endblock %}

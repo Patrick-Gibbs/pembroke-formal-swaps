@@ -310,9 +310,6 @@ def guest_list(token):
     if request.method == "POST" and open_:
         try:
             guests = inc.parse_guests(request.form, swap["tickets"])
-            if request.form.get("confirm") != "1":
-                raise inc.GuestListError("Please tick the box to confirm this is your "
-                                         "final guest list.")
             _, ok = inc.submit(db, token, guests)
             if not ok:
                 audit(db, "system", "incoming_catering_failed", f"swap={swap['id']}")
