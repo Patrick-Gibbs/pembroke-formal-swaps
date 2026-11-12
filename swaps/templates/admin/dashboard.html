@@ -94,6 +94,11 @@
     <input type="email" name="admin_email" value="{{ admin_email }}" placeholder="you@cam.ac.uk">
     <label>Admin name (signs off host emails)</label>
     <input type="text" name="admin_name" value="{{ admin_name }}" placeholder="e.g. Patrick Gibbs">
+    <label>Formal Hall team email (incoming guest lists go here; comma-separate for several)</label>
+    <input type="text" name="catering_email" value="{{ catering_email }}" placeholder="formalhall@pem.cam.ac.uk">
+    <label>Incoming guest lists due (days before their visit)</label>
+    <input type="number" name="incoming_deadline_days" min="0" max="60" style="max-width:7rem"
+           value="{{ incoming_deadline_days }}">
     <label style="font-weight:normal"><input type="checkbox" name="admin_auto_attend"
       {% if admin_auto_attend %}checked{% endif %}> Auto-attend: reserve me a seat in every
       formal (the member registered with the admin email above). Takes effect

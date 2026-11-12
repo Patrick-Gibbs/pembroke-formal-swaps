@@ -5,7 +5,7 @@ import logging
 import threading
 import time
 
-from . import config, emailer
+from . import config, emailer, incoming
 from .db import connect
 from .ics import formal_ics
 from .services import open_due_releases, send_scheduled_emails
@@ -86,6 +86,8 @@ def _loop():
                 open_due_releases(conn, _notify)
                 send_scheduled_emails(conn, _send_reminders, _send_reviews,
                                       _send_catering)
+                for sid, stage in incoming.send_due_reminders(conn):
+                    log.info("Guest-list reminder %s sent for incoming swap %s", stage, sid)
             finally:
                 conn.close()
         except Exception:

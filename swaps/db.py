@@ -81,6 +81,29 @@ def init_db(db_path=None):
     if "inherited_from_alloc" not in acols:
         conn.execute("ALTER TABLE allocations ADD COLUMN inherited_from_alloc INTEGER")
         _repair_inherited_chains(conn)
+    icols = {r["name"] for r in conn.execute("PRAGMA table_info(incoming_swaps)")}
+    for col, ddl in [("tickets", "INTEGER NOT NULL DEFAULT 0"), ("token", "TEXT"),
+                     ("link_sent_at", "TEXT"), ("submitted_at", "TEXT"),
+                     ("catering_sent_at", "TEXT"),
+                     ("reminder_stage", "INTEGER NOT NULL DEFAULT 0")]:
+        if col not in icols:
+            conn.execute(f"ALTER TABLE incoming_swaps ADD COLUMN {col} {ddl}")
+    if "formal_id" not in icols:
+        conn.execute("ALTER TABLE incoming_swaps ADD COLUMN formal_id INTEGER")
+        # Pair existing incoming swaps with their outgoing formal where the
+        # college name (ignoring a trailing "College") matches exactly one of each.
+        def norm(name):
+            n = " ".join((name or "").lower().split())
+            return n[:-len(" college")] if n.endswith(" college") else n
+        formals, swaps = {}, {}
+        for r in conn.execute("SELECT id, host_college FROM formals"):
+            formals.setdefault(norm(r["host_college"]), []).append(r["id"])
+        for r in conn.execute("SELECT id, guest_college FROM incoming_swaps"):
+            swaps.setdefault(norm(r["guest_college"]), []).append(r["id"])
+        for name, sids in swaps.items():
+            if len(sids) == 1 and len(formals.get(name, [])) == 1:
+                conn.execute("UPDATE incoming_swaps SET formal_id=? WHERE id=?",
+                             (formals[name][0], sids[0]))
     ucols = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
     if "calendar_token" not in ucols:
         conn.execute("ALTER TABLE users ADD COLUMN calendar_token TEXT")

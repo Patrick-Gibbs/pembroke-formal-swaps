@@ -295,6 +295,40 @@ def incoming():
     return render_template("incoming.html", swaps=swaps, participants=participants)
 
 
+@bp.route("/guests/<token>", methods=["GET", "POST"])
+def guest_list(token):
+    """The other college's contact enters their incoming guests. No account:
+    the secret link is the only access control. Locked once submitted."""
+    from .. import incoming as inc
+    db = get_db()
+    swap = db.execute("SELECT * FROM incoming_swaps WHERE token=?", (token,)).fetchone()
+    if swap is None:
+        abort(404)
+    error, guests = None, None
+    open_ = (not swap["submitted_at"] and swap["tickets"] > 0
+             and inc.parse_local(swap["dt"]) > inc.local_now())
+    if request.method == "POST" and open_:
+        try:
+            guests = inc.parse_guests(request.form, swap["tickets"])
+            if request.form.get("confirm") != "1":
+                raise inc.GuestListError("Please tick the box to confirm this is your "
+                                         "final guest list.")
+            _, ok = inc.submit(db, token, guests)
+            if not ok:
+                audit(db, "system", "incoming_catering_failed", f"swap={swap['id']}")
+            return redirect(url_for("main.guest_list", token=token))
+        except inc.GuestListError as e:
+            error = str(e)
+    people = db.execute("SELECT first_name, last_name, dietary FROM incoming_participants "
+                        "WHERE swap_id=? ORDER BY id", (swap["id"],)).fetchall()
+    if guests is None:      # pre-fill from anything the admin already entered
+        guests = [(p["first_name"], p["last_name"], p["dietary"]) for p in people]
+    return render_template("guest_list.html", swap=swap, open_=open_, error=error,
+                           guests=guests, people=people,
+                           deadline=inc.deadline(db, swap).isoformat(),
+                           dietary_choices=DIETARY_CHOICES)
+
+
 @bp.route("/me")
 @login_required
 def me():

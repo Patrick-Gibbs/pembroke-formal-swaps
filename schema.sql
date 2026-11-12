@@ -222,6 +222,13 @@ CREATE TABLE IF NOT EXISTS incoming_swaps (
     host_email TEXT NOT NULL DEFAULT '',
     host_phone TEXT NOT NULL DEFAULT '',
     notes TEXT NOT NULL DEFAULT '',
+    formal_id INTEGER,                   -- paired outgoing formal (NULL = stand-alone)
+    tickets INTEGER NOT NULL DEFAULT 0,  -- places we host at Pembroke
+    token TEXT,                          -- secret for the guest-list form link
+    link_sent_at TEXT,                   -- UTC; form link emailed to their contact
+    submitted_at TEXT,                   -- UTC; they confirmed the list (then locked)
+    catering_sent_at TEXT,               -- UTC; list emailed to the Formal Hall team
+    reminder_stage INTEGER NOT NULL DEFAULT 0, -- 1: 3 days before, 2: on, 3: 2 days after
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

@@ -93,6 +93,9 @@ def dashboard():
                            cancel_charge=get_setting(db, "cancel_charge_hours", "72"),
                            admin_email=get_setting(db, "admin_email", ""),
                            admin_name=get_setting(db, "admin_name", ""),
+                           catering_email=get_setting(db, "catering_email", ""),
+                           incoming_deadline_days=get_setting(db, "incoming_deadline_days",
+                                                              "10"),
                            officer_name=get_setting(db, "officer_name", ""),
                            officer_role=get_setting(db, "officer_role", ""),
                            officer_bio=get_setting(db, "officer_bio", ""),
@@ -167,6 +170,12 @@ def settings():
     set_setting(db, "cancel_charge_hours", str(charge))
     set_setting(db, "admin_email", request.form.get("admin_email", "").strip()[:200])
     set_setting(db, "admin_name", request.form.get("admin_name", "").strip()[:120])
+    set_setting(db, "catering_email", request.form.get("catering_email", "").strip()[:400])
+    try:
+        ddays = max(0, min(60, int(request.form.get("incoming_deadline_days", "10"))))
+    except ValueError:
+        ddays = 10
+    set_setting(db, "incoming_deadline_days", str(ddays))
     set_setting(db, "officer_name", request.form.get("officer_name", "").strip()[:120])
     set_setting(db, "officer_role", request.form.get("officer_role", "").strip()[:120])
     set_setting(db, "officer_bio", request.form.get("officer_bio", "").strip()[:4000])
@@ -428,25 +437,45 @@ def formal_new():
     db = get_db()
     if request.method == "POST":
         vals = _formal_from_form()
+        tickets, visit, inc_err = _incoming_from_formal_form()
         if not vals[0] or not vals[1] or vals[3] < 1:
             flash("College, date/time and a positive slot count are required.", "error")
         elif _catering_date_error(vals):
             flash(_catering_date_error(vals), "error")
+        elif inc_err or (tickets and not visit):
+            flash(inc_err or "Give the date they come to Pembroke for the tickets we host.",
+                  "error")
         else:
-            db.execute("INSERT INTO formals(host_college, dt, price, slots, term, "
+            cur = db.execute("INSERT INTO formals(host_college, dt, price, slots, term, "
                        "ballot_open, ballot_close, status, location, instructions, "
                        "host_name, host_email, host_phone, endowment_m, description, "
                        "catering_lead_days, catering_at, wine_fee, wine_price) "
                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", vals)
             _remember_endowment(db, vals[0], vals[13])
+            from ..incoming import sync_from_formal
+            sync_from_formal(db, cur.lastrowid, tickets, visit)
             audit(db, "admin", "formal_create", f"{vals[0]} {vals[1]}")
             seat_admin(db, vals[4])  # reserve the admin's seat if auto-attend on
             flash("Formal created.", "ok")
             return redirect(url_for("admin.dashboard"))
-    return render_template("admin/formal_form.html", f=None,
+    return render_template("admin/formal_form.html", f=None, incoming=None,
                            default_term=get_setting(db, "current_term"),
                            catering_date=request.form.get("catering_date", ""),
                            endowments=_endowment_map(db))
+
+
+def _incoming_from_formal_form():
+    """(tickets, visit_dt, error) from the formal form's incoming fields."""
+    try:
+        tickets = max(0, min(200, int(request.form.get("incoming_tickets", "0") or 0)))
+    except ValueError:
+        return 0, "", "Tickets we host must be a number."
+    visit = request.form.get("incoming_dt", "").replace("T", " ").strip()
+    return tickets, visit, None
+
+
+def _incoming_for(db, fid):
+    return db.execute("SELECT * FROM incoming_swaps WHERE formal_id=?", (fid,)).fetchone()
 
 
 @bp.route("/formals/<int:fid>/edit", methods=["GET", "POST"])
@@ -459,10 +488,14 @@ def formal_edit(fid):
         return redirect(url_for("admin.dashboard"))
     if request.method == "POST":
         vals = _formal_from_form()
-        err = _catering_date_error(vals)
+        tickets, visit, inc_err = _incoming_from_formal_form()
+        err = _catering_date_error(vals) or inc_err or (
+            "Give the date they come to Pembroke for the tickets we host."
+            if tickets and not visit and not _incoming_for(db, fid) else None)
         if err:
             flash(err, "error")
             return render_template("admin/formal_form.html", f=f, default_term=f["term"],
+                                   incoming=_incoming_for(db, fid),
                                    catering_date=request.form.get("catering_date", ""),
                                    endowments=_endowment_map(db))
         db.execute("UPDATE formals SET host_college=?, dt=?, price=?, slots=?, term=?, "
@@ -472,6 +505,8 @@ def formal_edit(fid):
                    "wine_fee=?, wine_price=? WHERE id=?",
                    vals + (fid,))
         _remember_endowment(db, vals[0], vals[13])
+        from ..incoming import sync_from_formal
+        sync_from_formal(db, fid, tickets, visit)
         audit(db, "admin", "formal_edit", f"id={fid} {vals[0]} {vals[1]}")
         msg = "Saved."
         if parse_local(vals[1]) != parse_local(f["dt"]):
@@ -481,6 +516,7 @@ def formal_edit(fid):
         flash(msg, "ok")
         return redirect(url_for("admin.dashboard"))
     return render_template("admin/formal_form.html", f=f, default_term=f["term"],
+                           incoming=_incoming_for(db, fid),
                            catering_date=_catering_date_value(f),
                            endowments=_endowment_map(db))
 
@@ -531,6 +567,8 @@ def formal_delete(fid):
             db.execute(f"DELETE FROM {table} WHERE formal_id=?", (fid,))  # noqa: S608 - fixed table names
         db.execute("DELETE FROM swap_requests WHERE from_formal=? OR to_formal=?",
                    (fid, fid))
+        # Its incoming swap (if any) stays, now stand-alone.
+        db.execute("UPDATE incoming_swaps SET formal_id=NULL WHERE formal_id=?", (fid,))
         db.execute("DELETE FROM allocations WHERE formal_id=?", (fid,))
         db.execute("DELETE FROM formals WHERE id=?", (fid,))
         audit(db, "admin", "formal_delete", f"id={fid}")
@@ -1130,14 +1168,25 @@ def export_all():
 @admin_required
 def incoming():
     db = get_db()
-    swaps = db.execute("SELECT * FROM incoming_swaps ORDER BY dt").fetchall()
-    participants = {}
+    from .. import incoming as inc
+    for r in db.execute("SELECT id FROM incoming_swaps WHERE token IS NULL").fetchall():
+        inc.ensure_token(db, r["id"])
+    swaps = db.execute("SELECT i.*, f.host_college AS formal_college, f.dt AS formal_dt "
+                       "FROM incoming_swaps i LEFT JOIN formals f ON f.id = i.formal_id "
+                       "ORDER BY i.dt").fetchall()
+    participants, links, deadlines = {}, {}, {}
     for s in swaps:
         participants[s["id"]] = db.execute(
             "SELECT * FROM incoming_participants WHERE swap_id=? "
             "ORDER BY last_name, first_name", (s["id"],)).fetchall()
+        links[s["id"]] = inc.guest_link(s["token"])
+        deadlines[s["id"]] = inc.deadline(db, s).isoformat()
+    unsent = sum(1 for s in swaps if s["tickets"] > 0 and s["host_email"]
+                 and not s["link_sent_at"] and not s["submitted_at"])
     return render_template("admin/incoming.html", swaps=swaps,
-                           participants=participants)
+                           participants=participants, links=links, deadlines=deadlines,
+                           unsent=unsent,
+                           catering_email=get_setting(db, "catering_email", ""))
 
 
 @bp.route("/incoming/export.csv")
@@ -1165,12 +1214,17 @@ def incoming_export():
 
 
 def _incoming_from_form():
+    try:
+        tickets = max(0, min(200, int(request.form.get("tickets", "0") or 0)))
+    except ValueError:
+        tickets = 0
     return (request.form.get("guest_college", "").strip()[:120],
             request.form.get("dt", "").replace("T", " ").strip(),
             request.form.get("host_name", "").strip()[:120],
             request.form.get("host_email", "").strip()[:200],
             request.form.get("host_phone", "").strip()[:50],
-            request.form.get("notes", "").strip()[:2000])
+            request.form.get("notes", "").strip()[:2000],
+            tickets)
 
 
 @bp.route("/incoming/new", methods=["POST"])
@@ -1182,7 +1236,7 @@ def incoming_new():
         flash("Guest college and date/time are required.", "error")
     else:
         db.execute("INSERT INTO incoming_swaps(guest_college, dt, host_name, "
-                   "host_email, host_phone, notes) VALUES (?,?,?,?,?,?)", vals)
+                   "host_email, host_phone, notes, tickets) VALUES (?,?,?,?,?,?,?)", vals)
         audit(db, "admin", "incoming_create", f"{vals[0]} {vals[1]}")
         flash("Incoming swap added.", "ok")
     return redirect(url_for("admin.incoming"))
@@ -1194,9 +1248,46 @@ def incoming_update(sid):
     db = get_db()
     vals = _incoming_from_form()
     db.execute("UPDATE incoming_swaps SET guest_college=?, dt=?, host_name=?, "
-               "host_email=?, host_phone=?, notes=? WHERE id=?", vals + (sid,))
+               "host_email=?, host_phone=?, notes=?, tickets=? WHERE id=?", vals + (sid,))
     audit(db, "admin", "incoming_update", f"id={sid} {vals[0]}")
     flash("Saved.", "ok")
+    return redirect(url_for("admin.incoming"))
+
+
+@bp.route("/incoming/<int:sid>/send-link", methods=["POST"])
+@admin_required
+def incoming_send_link(sid):
+    from ..incoming import send_link
+    ok, msg = send_link(get_db(), sid)
+    flash(msg, "ok" if ok else "error")
+    return redirect(url_for("admin.incoming"))
+
+
+@bp.route("/incoming/send-links", methods=["POST"])
+@admin_required
+def incoming_send_links():
+    """Email every contact whose link hasn't gone out yet."""
+    from ..incoming import send_link
+    db = get_db()
+    sent, problems = 0, []
+    for r in db.execute("SELECT id FROM incoming_swaps WHERE link_sent_at IS NULL "
+                        "AND submitted_at IS NULL AND tickets > 0 ORDER BY dt").fetchall():
+        ok, msg = send_link(db, r["id"])
+        if ok:
+            sent += 1
+        else:
+            problems.append(msg)
+    flash(f"Sent {sent} guest-list link(s)." + (" " + " ".join(problems) if problems else ""),
+          "ok" if not problems else "error")
+    return redirect(url_for("admin.incoming"))
+
+
+@bp.route("/incoming/<int:sid>/send-catering", methods=["POST"])
+@admin_required
+def incoming_send_catering(sid):
+    from ..incoming import send_to_catering
+    ok, msg = send_to_catering(get_db(), sid)
+    flash(msg, "ok" if ok else "error")
     return redirect(url_for("admin.incoming"))
 
 

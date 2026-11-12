@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Guest list — {{ swap['guest_college'] }} at Pembroke{% endblock %}
+{% block content %}
+<h1>Formal hall at Pembroke — guest list</h1>
+<div class="card">
+  <p><b>{{ swap['guest_college'] }}</b> guests at Pembroke on <b>{{ swap['dt'] | uk_datetime }}</b>
+  &middot; {{ swap['tickets'] }} place(s)</p>
+
+  {% if swap['submitted_at'] %}
+  <p class="note">✓ Thank you — this guest list has been submitted and sent to our
+  Formal Hall team. It can't be changed here; if something is wrong, please reply to
+  the email you received or contact the Pembroke swaps officer.</p>
+  <table>
+    <tr><th>Name</th><th>Dietary requirements</th></tr>
+    {% for p in people %}
+    <tr><td>{{ p['first_name'] }} {{ p['last_name'] }}</td><td>{{ p['dietary'] or '—' }}</td></tr>
+    {% endfor %}
+  </table>
+
+  {% elif not open_ %}
+  <p>This guest list is closed. Please contact the Pembroke swaps officer.</p>
+
+  {% else %}
+  <p>Please enter each guest's name and any dietary requirements by
+  <b>{{ deadline | uk_date }}</b>. Leave a row blank if you have fewer guests.</p>
+  {% if error %}<p class="flash error">{{ error }}</p>{% endif %}
+  <form method="post">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <datalist id="dietary-options">
+      {% for d in dietary_choices %}<option value="{{ d }}">{% endfor %}
+    </datalist>
+    <table>
+      <tr><th>#</th><th>First name</th><th>Last name</th><th>Dietary requirements</th></tr>
+      {% for i in range(swap['tickets']) %}
+      {% set g = guests[i] if i < guests|length else ('', '', '') %}
+      <tr>
+        <td>{{ i + 1 }}</td>
+        <td><input type="text" name="first_{{ i }}" value="{{ g[0] }}" maxlength="80" style="max-width:9rem" autocomplete="off"></td>
+        <td><input type="text" name="last_{{ i }}" value="{{ g[1] }}" maxlength="80" style="max-width:9rem" autocomplete="off"></td>
+        <td><input type="text" name="dietary_{{ i }}" value="{{ g[2] }}" maxlength="300" list="dietary-options"
+                   placeholder="blank if none" style="max-width:14rem"></td>
+      </tr>
+      {% endfor %}
+    </table>
+    <label style="font-weight:normal"><input type="checkbox" name="confirm" value="1" required>
+      This is our final guest list. I understand it is sent to Pembroke's Formal Hall team
+      and can't be changed afterwards.</label>
+    <p><button>Submit guest list</button></p>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

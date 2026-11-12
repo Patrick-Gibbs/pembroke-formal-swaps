@@ -48,6 +48,16 @@
          value="{{ catering_date or '' }}">
   <p class="muted">From this point the list is fixed: anyone who then claims a
   freed seat inherits the dropped person's dietary (the host can't re-cater).</p>
+  <h3>Incoming: {{ (f['host_college'] if f else 'their') }} guests at Pembroke</h3>
+  <label>Tickets we host at Pembroke (0 = none)</label>
+  <input type="number" name="incoming_tickets" min="0" max="200" style="max-width:7rem"
+         value="{{ incoming['tickets'] if incoming else 0 }}">
+  <label>Date &amp; time they come to Pembroke (UK time)</label>
+  <input type="datetime-local" name="incoming_dt"
+         value="{{ incoming['dt'].replace(' ', 'T') if incoming else '' }}">
+  <p class="muted">Their contact is the host contact above. Send them their guest-list
+  link from <a href="/admin/incoming">Incoming swaps</a>{% if incoming and incoming['submitted_at'] %}
+  — <b>their list has been submitted</b>{% endif %}.</p>
   <label>Number of slots</label>
   <input type="number" name="slots" min="1" required value="{{ f['slots'] if f else 10 }}">
   <label>Term</label>

@@ -162,6 +162,47 @@ TEMPLATES = {
                 "at <a href=\"{site}\">{site}</a> and you'll get an email the moment a "
                 "place is released — first come, first served.</p>",
     },
+    "incoming_invite": {
+        "label": "Incoming swap: guest-list link (to the other college's contact)",
+        "placeholders": ["contact_name", "guest_college", "dt", "tickets", "deadline",
+                         "link", "signoff"],
+        "subject": "Guest list for formal hall at Pembroke — {dt}",
+        "body": "<p>Dear {contact_name},</p>"
+                "<p>We're looking forward to hosting <b>{tickets}</b> guest(s) from "
+                "{guest_college} at formal hall at Pembroke on <b>{dt}</b>.</p>"
+                "<p>Please enter your guests' names and dietary requirements by "
+                "<b>{deadline}</b> using this link (no account needed):</p>"
+                "<p><a href=\"{link}\">{link}</a></p>"
+                "<p>Once you confirm the list it goes straight to our Formal Hall team "
+                "and can't be changed, so please check it carefully.</p>"
+                "<p>{signoff}</p>",
+    },
+    "incoming_reminder": {
+        "label": "Incoming swap: guest-list reminder (3 days before, on, and 2 days after the deadline; admin CC'd)",
+        "placeholders": ["contact_name", "guest_college", "dt", "tickets", "deadline",
+                         "due_phrase", "link", "signoff"],
+        "subject": "Reminder: guest list for Pembroke formal hall on {dt}",
+        "body": "<p>Dear {contact_name},</p>"
+                "<p>A reminder that the guest list for {guest_college}'s visit to "
+                "formal hall at Pembroke on <b>{dt}</b> ({tickets} place(s)) "
+                "{due_phrase}.</p>"
+                "<p>Please enter your guests and their dietary requirements here:</p>"
+                "<p><a href=\"{link}\">{link}</a></p>"
+                "<p>{signoff}</p>",
+    },
+    "incoming_catering": {
+        "label": "Incoming swap: guest list to the Formal Hall team (contact and admin CC'd)",
+        "placeholders": ["guest_college", "dt", "count", "table", "summary",
+                         "contact_name", "signoff"],
+        "subject": "Formal hall guests — {guest_college} at Pembroke, {dt}",
+        "body": "<p>Dear Formal Hall team,</p>"
+                "<p>Please find below the <b>{count}</b> guest(s) from "
+                "<b>{guest_college}</b> coming to formal hall on <b>{dt}</b>, with "
+                "their dietary requirements.</p>{table}"
+                "<p><b>Dietary summary:</b> {summary}.</p>"
+                "<p>Their contact, {contact_name}, is copied in. Thank you!</p>"
+                "<p>{signoff}</p>",
+    },
     "rank_reminder": {
         "label": "Reminder to rank before the ballot closes (admin-sent)",
         "placeholders": ["first_name", "term", "deadline", "link"],
@@ -421,6 +462,40 @@ def date_change_email(to, formal, old_dt, ics_files):
         f"<p>If you can no longer make it, manage your place at "
         f"<a href=\"{config.SITE_URL}/me\">{config.SITE_URL}/me</a>.</p>",
         attachments=ics_files)
+
+
+def incoming_invite_email(to, ctx):
+    subject, body = _render_template("incoming_invite", ctx)
+    return send(to, subject, body)
+
+
+def incoming_reminder_email(to, cc, ctx):
+    subject, body = _render_template("incoming_reminder", ctx)
+    return send(to, subject, body, cc=cc)
+
+
+def incoming_catering_email(to, cc, swap, people, signoff):
+    """Incoming guests + dietary to the Formal Hall team. people: rows with
+    first_name, last_name, dietary."""
+    from html import escape
+    td = "<td style='border:1px solid #ccc;padding:4px 8px'>"
+    th = "<th style='border:1px solid #ccc;padding:4px 8px;text-align:left'>"
+    rows = "".join(
+        f"<tr>{td}{escape(p['first_name'])} {escape(p['last_name'])}</td>"
+        f"{td}{escape(p['dietary'] or '—')}</td></tr>" for p in people)
+    table = (f"<table style='border-collapse:collapse'><tr>{th}Name</th>"
+             f"{th}Dietary requirements</th></tr>{rows}</table>")
+    tally = {}
+    for p in people:
+        if (p["dietary"] or "").strip():
+            tally[p["dietary"].strip()] = tally.get(p["dietary"].strip(), 0) + 1
+    summary = ", ".join(f"{d} ×{n}" for d, n in sorted(tally.items())) or "none noted"
+    contact = (swap["host_name"] or "").strip() or f"the {swap['guest_college']} organiser"
+    subject, body = _render_template("incoming_catering", {
+        "guest_college": swap["guest_college"], "dt": uk_datetime(swap["dt"]),
+        "count": len(people), "table": table, "summary": escape(summary),
+        "contact_name": contact, "signoff": signoff})
+    return send(to, subject, body, cc=cc or None)
 
 
 def claim_inherited_email(to, formal, replaced, dietary):

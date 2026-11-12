@@ -4,7 +4,19 @@
 <h1>Incoming swaps (admin)</h1>
 <p><a class="btn" href="/admin/incoming/export.csv">Export all (CSV)</a>
    <a class="btn ghost" href="/admin/">Back to dashboard</a>
-   <a class="btn ghost" href="/incoming">Public view</a></p>
+   <a class="btn ghost" href="/incoming">Public view</a>
+   {% if unsent %}
+   <form class="inline" method="post" action="/admin/incoming/send-links"
+         data-confirm="Email the guest-list link to {{ unsent }} contact(s) who haven't had it yet?" onsubmit="return confirm(this.dataset.confirm)">
+     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+     <button>✉ Email guest-list links to all ({{ unsent }})</button>
+   </form>{% endif %}</p>
+{% if not catering_email %}<p class="flash error">Set the <b>Formal Hall team email</b> in the
+dashboard Settings — until then submitted guest lists are emailed to you instead.</p>{% endif %}
+<p class="muted">Each contact gets a private link (no account) to enter their guests and
+dietary. Once they confirm, the list locks and goes to the Formal Hall team with them and
+you CC'd. If they haven't submitted, reminders go 3 days before the deadline, on it, and
+2 days after (you CC'd). Paired swaps are set from the formal's page (tickets, date, contact).</p>
 
 <div class="card">
   <h3>Add an incoming swap</h3>
@@ -20,6 +32,8 @@
     <input type="email" name="host_email">
     <label>Their organiser — phone</label>
     <input type="text" name="host_phone">
+    <label>Tickets we host</label>
+    <input type="number" name="tickets" min="0" max="200" value="0" style="max-width:7rem">
     <label>Notes (payment arranged, gowns, etc.)</label>
     <textarea name="notes" rows="2" style="width:100%;max-width:26rem;padding:.45rem;border:1px solid #b8c4d0;border-radius:5px"></textarea>
     <p><button>Add swap</button></p>
@@ -29,16 +43,41 @@
 {% for s in swaps %}
 <div class="card">
   <h2>{{ s['guest_college'] }} — {{ s['dt'] | uk_datetime }}</h2>
+  <p>
+    {% if s['formal_id'] %}<span class="muted">Paired with our formal at {{ s['formal_college'] }} ({{ s['formal_dt'] | uk_datetime }}) —
+      <a href="/admin/formals/{{ s['formal_id'] }}/edit">edit tickets/date/contact there</a>.</span><br>{% endif %}
+    <b>{{ s['tickets'] }}</b> place(s) &middot; list due <b>{{ deadlines[s['id']] | uk_date }}</b> &middot;
+    {% if s['submitted_at'] %}✓ Submitted {{ s['submitted_at'] | uk_datetime }} UTC
+      {% if s['catering_sent_at'] %}&middot; ✓ sent to Formal Hall team{% else %}&middot; <b>⚠️ not yet sent to Formal Hall team</b>{% endif %}
+    {% elif s['link_sent_at'] %}Link sent {{ s['link_sent_at'] | uk_datetime }} UTC{% if s['reminder_stage'] %} &middot; {{ s['reminder_stage'] }} reminder(s) sent{% endif %} &middot; awaiting their list
+    {% else %}Link not sent yet{% endif %}
+  </p>
+  <p>
+    <input type="text" readonly value="{{ links[s['id']] }}" style="max-width:26rem;font-size:.8rem" onclick="this.select()">
+    <button class="small ghost" type="button" onclick="navigator.clipboard.writeText('{{ links[s['id']] }}');this.textContent='Copied'">Copy link</button>
+    {% if not s['submitted_at'] %}
+    <form class="inline" method="post" action="/admin/incoming/{{ s['id'] }}/send-link">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button class="small">{{ 'Resend link' if s['link_sent_at'] else 'Email link' }}</button>
+    </form>{% endif %}
+    {% if participants[s['id']] %}
+    <form class="inline" method="post" action="/admin/incoming/{{ s['id'] }}/send-catering"
+          data-confirm="Email this guest list to the Formal Hall team now ({{ s['guest_college'] }} contact and you CC'd)?" onsubmit="return confirm(this.dataset.confirm)">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button class="small">{{ 'Resend' if s['catering_sent_at'] else 'Send' }} to Formal Hall team</button>
+    </form>{% endif %}
+  </p>
   <form method="post" action="/admin/incoming/{{ s['id'] }}/update">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <table>
-      <tr><th>College</th><th>Date/time</th><th>Host name</th><th>Host email</th><th>Host phone</th></tr>
+      <tr><th>College</th><th>Date/time</th><th>Host name</th><th>Host email</th><th>Host phone</th><th>Tickets</th></tr>
       <tr>
         <td><input type="text" name="guest_college" value="{{ s['guest_college'] }}" style="max-width:10rem"></td>
         <td><input type="datetime-local" name="dt" value="{{ s['dt'].replace(' ', 'T') }}" style="max-width:12rem"></td>
         <td><input type="text" name="host_name" value="{{ s['host_name'] }}" style="max-width:10rem"></td>
         <td><input type="email" name="host_email" value="{{ s['host_email'] }}" style="max-width:12rem"></td>
         <td><input type="text" name="host_phone" value="{{ s['host_phone'] }}" style="max-width:8rem"></td>
+        <td><input type="number" name="tickets" min="0" max="200" value="{{ s['tickets'] }}" style="max-width:5rem"></td>
       </tr>
     </table>
     <label>Notes</label>
