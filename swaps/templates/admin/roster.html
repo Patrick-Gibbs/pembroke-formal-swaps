@@ -82,6 +82,12 @@
     <select name="user_id">
       {% for u in users %}<option value="{{ u['id'] }}">{{ u['last_name'] }}, {{ u['first_name'] }} ({{ u['email'] }})</option>{% endfor %}
     </select>
+    {% if places %}
+    <label style="margin:.4rem 0 0">Place to fill</label>
+    <select name="place">
+      {% for val, label in places %}<option value="{{ val }}" {% if loop.first %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    {% endif %}
     <button>Add to this formal</button>
   </form>
   <p class="muted">To move someone between formals: add them to the new one, then remove them here.

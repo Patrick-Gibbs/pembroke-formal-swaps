@@ -186,6 +186,37 @@ def pending_holds(conn, formal_id, priority=False):
         (formal_id, now)).fetchone()["n"]
 
 
+def _drop_surplus_places(conn, formal_id, keep=None):
+    """Keep waiting places within real capacity: a formal can't have more
+    unclaimed released places than it has free seats (slots - active). Extra
+    ones (e.g. after the admin reduces slots) are removed — not-yet-released
+    ones first, newest first — so nothing is announced that can't be claimed.
+    `keep` (a released_slots id) is removed last. Must run inside a
+    transaction. Returns the removed places' original names."""
+    f = conn.execute("SELECT slots FROM formals WHERE id=?", (formal_id,)).fetchone()
+    if f is None:
+        return []
+    room = max(0, f["slots"] - active_count(conn, formal_id))
+    now = utcnow_str()
+    waiting = conn.execute(
+        "SELECT id, orig_name FROM released_slots WHERE formal_id=? AND claimed_by IS NULL "
+        "ORDER BY (id = ?) ASC, (release_at > ?) DESC, created_at DESC, id DESC",
+        (formal_id, keep or -1, now)).fetchall()
+    surplus = waiting[:max(0, len(waiting) - room)]
+    for r in surplus:
+        conn.execute("DELETE FROM release_emails WHERE slot_id=?", (r["id"],))
+        conn.execute("DELETE FROM released_slots WHERE id=?", (r["id"],))
+    if surplus:
+        audit(conn, "system", "drop_surplus_places",
+              f"formal={formal_id} removed={[r['id'] for r in surplus]} room={room}")
+    return [r["orig_name"] for r in surplus]
+
+
+def drop_surplus_places(conn, formal_id):
+    with immediate(conn):
+        return _drop_surplus_places(conn, formal_id)
+
+
 def release_now(conn, formal_id, everyone, email=True, limit=None):
     """Admin override: open a formal's waiting (cancelled, not yet released)
     places immediately — to members who missed out (everyone=False) or to all
@@ -200,6 +231,7 @@ def release_now(conn, formal_id, everyone, email=True, limit=None):
         return 0
     waiting = "COALESCE(general_at, release_at)" if everyone else "release_at"
     with immediate(conn):
+        _drop_surplus_places(conn, formal_id)   # never release a seat that doesn't exist
         ids = [r["id"] for r in conn.execute(
             f"SELECT id FROM released_slots WHERE formal_id=? AND claimed_by IS NULL "  # noqa: S608
             f"AND {waiting} > ? ORDER BY release_at, id"
@@ -1170,7 +1202,7 @@ class ClaimError(Exception):
 
 
 def claim_seat(conn, user_id, formal_id, actor=None, override_holds=False,
-               wine_opt_out=False):
+               wine_opt_out=False, place=None):
     """Atomically claim a free seat. BEGIN IMMEDIATE serializes writers, so
     the capacity check + insert are race-free; the partial unique index on
     active (user_id, formal_id) is a second line of defence.
@@ -1183,6 +1215,11 @@ def claim_seat(conn, user_id, formal_id, actor=None, override_holds=False,
     formal, for billing fixes) and may also take a cancelled place that hasn't
     been publicly released yet (or is in its head-start window). It's marked
     claimed, so it's never released and nobody is notified about it.
+
+    place (admin only): which place to fill — a released_slots id (someone's
+    cancelled place), "free" (a seat that was never anyone's), or None to pick
+    automatically (a free seat if there is one, else the most recently
+    cancelled place).
 
     wine_opt_out: the claimer's wine choice (only stored when the formal has
     a wine fee)."""
@@ -1205,12 +1242,31 @@ def claim_seat(conn, user_id, formal_id, actor=None, override_holds=False,
         # during the priority window a released seat is claimable only by them.
         priority = user_missed_all(conn, user_id, f["term"])
         take_held = False
+        chosen = None
         if override_holds:
+            _drop_surplus_places(conn, formal_id,
+                                 keep=place if isinstance(place, int) else None)
             if f["slots"] - active_count(conn, formal_id) < 1:
                 raise ClaimError("Every place at this formal is taken.")
-            # Use a genuinely free place if there is one; otherwise take a
-            # cancelled place that's still waiting to be released.
-            take_held = free_seats(conn, formal_id, f["slots"], priority=priority) < 1
+            unclaimed = conn.execute(
+                "SELECT COUNT(*) FROM released_slots WHERE formal_id=? "
+                "AND claimed_by IS NULL", (formal_id,)).fetchone()[0]
+            never_anyones = f["slots"] - active_count(conn, formal_id) - unclaimed
+            if place == "free":
+                if never_anyones < 1:
+                    raise ClaimError("There's no free seat that wasn't someone's place — "
+                                     "pick one of the cancelled places.")
+            elif place is not None:
+                chosen = conn.execute(
+                    "SELECT id, orig_name, orig_dietary, orig_alloc FROM released_slots "
+                    "WHERE id=? AND formal_id=? AND claimed_by IS NULL",
+                    (int(place), formal_id)).fetchone()
+                if chosen is None:
+                    raise ClaimError("That place has already been taken.")
+            else:
+                # Automatic: a genuinely free place if there is one; otherwise
+                # the most recently cancelled place.
+                take_held = free_seats(conn, formal_id, f["slots"], priority=priority) < 1
         elif free_seats(conn, formal_id, f["slots"], priority=priority) < 1:
             if not priority and free_seats(conn, formal_id, f["slots"], priority=True) >= 1:
                 raise ClaimError("This place is in its priority window for members "
@@ -1223,11 +1279,13 @@ def claim_seat(conn, user_id, formal_id, actor=None, override_holds=False,
         alloc_id = cur.lastrowid
         # Consume one released seat now available to this claimer, if any (a
         # seat may also be free simply because the ballot didn't fill it).
-        if take_held:   # any unclaimed released place, soonest-due first
+        if chosen is not None or place == "free":
+            row = chosen
+        elif take_held:   # the most recently cancelled place
             row = conn.execute(
                 "SELECT id, orig_name, orig_dietary, orig_alloc FROM released_slots "
-                "WHERE formal_id=? AND claimed_by IS NULL ORDER BY release_at LIMIT 1",
-                (formal_id,)).fetchone()
+                "WHERE formal_id=? AND claimed_by IS NULL "
+                "ORDER BY created_at DESC, id DESC LIMIT 1", (formal_id,)).fetchone()
         else:
             avail = "release_at" if priority else "COALESCE(general_at, release_at)"
             row = conn.execute(
@@ -1407,6 +1465,12 @@ def open_due_releases(conn, notify):
     now = utcnow_str()
     fired = 0
     batches = {}   # formal_id -> {user_id: email}
+    for r in conn.execute(
+            "SELECT DISTINCT formal_id FROM released_slots WHERE claimed_by IS NULL AND "
+            "((release_at <= ? AND notified = 0) OR "
+            " (COALESCE(general_at, release_at) <= ? AND general_notified = 0))",
+            (now, now)).fetchall():
+        drop_surplus_places(conn, r["formal_id"])
     phases = (
         # (flag column, due expression, audience: missed_only)
         ("notified", "release_at", True),

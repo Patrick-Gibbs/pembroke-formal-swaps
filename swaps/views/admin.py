@@ -693,6 +693,12 @@ def formal_edit(fid):
         sync_from_formal(db, fid, tickets, visit)
         audit(db, "admin", "formal_edit", f"id={fid} {vals[0]} {vals[1]}")
         msg = "Saved."
+        from ..services import drop_surplus_places
+        dropped = drop_surplus_places(db, fid)
+        if dropped:
+            msg += (f" With {vals[3]} slots there's no room for {len(dropped)} waiting "
+                    f"cancelled place(s) ({', '.join(n or '?' for n in dropped)}), so "
+                    "they've been removed and won't be released.")
         if parse_local(vals[1]) != parse_local(f["dt"]):
             db.execute("UPDATE formals SET ics_seq=ics_seq+1 WHERE id=?", (fid,))
             if request.form.get("notify_date_change") == "1":
@@ -1078,6 +1084,7 @@ def roster(fid):
                            free=free_seats(db, fid, f["slots"]),
                            held=pending_holds(db, fid),
                            held_pri=pending_holds(db, fid, priority=True),
+                           places=_places_to_fill(db, f),
                            release_mode=release_mode(db, fid),
                            default_release_mode=release_mode(db),
                            past=formal_started(db, fid))
@@ -1108,22 +1115,50 @@ def _confirm_admin_assign(db, uid, fid, inherited):
     return "They've been emailed a confirmation with a calendar invite."
 
 
+def _places_to_fill(db, f):
+    """Options for 'Place to fill' when adding someone: each cancelled place
+    still unclaimed (newest first — the usual cancel-then-replace), plus seats
+    that were never anyone's."""
+    from ..services import MANUAL_HOLD, active_count, utcnow_str
+    now = utcnow_str()
+    opts = []
+    for r in db.execute("SELECT id, orig_name, orig_dietary, release_at, general_at, created_at "
+                        "FROM released_slots WHERE formal_id=? AND claimed_by IS NULL "
+                        "ORDER BY created_at DESC, id DESC", (f["id"],)):
+        state = ("held" if r["release_at"] == MANUAL_HOLD else
+                 "open to all" if (r["general_at"] or r["release_at"]) <= now else
+                 "open to no-swaps" if r["release_at"] <= now else "waiting to release")
+        meal = f" — meal: {r['orig_dietary']}" if f["catering_sent"] and r["orig_dietary"] else ""
+        opts.append((str(r["id"]), f"{r['orig_name'] or 'A cancelled'}'s place{meal} ({state})"))
+    free = f["slots"] - active_count(db, f["id"]) - len(opts)
+    if free > 0:
+        opts.append(("free", f"A free seat ({free} not anyone's place)"))
+    return opts
+
+
 @bp.route("/formals/<int:fid>/add-user", methods=["POST"])
 @admin_required
 def add_user(fid):
     db = get_db()
     uid = int(request.form.get("user_id", "0") or 0)
-    from ..services import free_seats as _free
-    f = db.execute("SELECT slots FROM formals WHERE id=?", (fid,)).fetchone()
-    held = f is not None and _free(db, fid, f["slots"]) < 1
+    place = request.form.get("place") or None
+    if place not in (None, "free"):
+        try:
+            place = int(place)
+        except ValueError:
+            place = None
     try:
-        inherited = claim_seat(db, uid, fid, actor="admin", override_holds=True)
+        inherited = claim_seat(db, uid, fid, actor="admin", override_holds=True, place=place)
+        took = db.execute(
+            "SELECT orig_name FROM released_slots WHERE formal_id=? AND claimed_by=? "
+            "ORDER BY claimed_at DESC, id DESC LIMIT 1", (fid, uid)).fetchone()
         audit(db, "admin", "manual_assign",
-              f"user={uid} formal={fid}" + (" (took unreleased place)" if held else ""))
+              f"user={uid} formal={fid}"
+              + (f" (took {took['orig_name']}'s place)" if took else " (free seat)"))
         msg = "User added to formal."
-        if held:
-            msg += (" They took a cancelled place that hadn't been publicly released "
-                    "yet — that release is cancelled, so nobody will be notified.")
+        if took:
+            msg += (f" They took {took['orig_name']}'s cancelled place, so it won't be "
+                    "released and nobody else is notified about it.")
         if inherited:
             msg += (f" The host list was already sent, so they take {inherited['replaced']}'s "
                     f"meal: {inherited['dietary']}.")

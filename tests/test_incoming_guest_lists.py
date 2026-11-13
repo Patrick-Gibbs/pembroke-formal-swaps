@@ -138,8 +138,8 @@ def test_no_reminders_once_submitted_or_before_link_sent(db):
 def test_late_link_skips_reminders_already_due(db_path, monkeypatch):
     from swaps import incoming as inc
     c = connect(db_path)
-    soon = (datetime.now() + timedelta(days=8)).strftime("%Y-%m-%d 19:30")
-    sid = _swap(c, soon, sent=False)                    # deadline already passed
+    soon = (datetime.now() + timedelta(days=9)).strftime("%Y-%m-%d 19:30")
+    sid = _swap(c, soon, sent=False)                    # deadline was yesterday
     ok, _ = _mail(inc.send_link, c, sid)[0]
     assert ok
     assert c.execute("SELECT reminder_stage FROM incoming_swaps").fetchone()[0] == 2
